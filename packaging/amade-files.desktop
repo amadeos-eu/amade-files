@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=amadeOS File Manager
+GenericName=File Manager
+Comment=CDE-style two-panel file manager
+Icon=amade-files
+Exec=/usr/bin/amade-files %F
+Terminal=false
+Categories=System;FileManager;
+MimeType=inode/directory;
+Keywords=files;folders;directory;copy;move;trash;
+StartupNotify=true
