@@ -10,7 +10,7 @@ def mainClassName = 'org.datazuul.amadeos.files.bootstrap.AmadeFilesApplication'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }
 
@@ -107,7 +107,7 @@ Version: ${project.version}
 Section: utils
 Priority: optional
 Architecture: all
-Depends: default-jre | openjdk-21-jre | java21-runtime
+Depends: openjdk-25-jre | java-runtime (>= 25)
 Recommends: xdg-utils
 Maintainer: amadeOS Project <developers@datazuul.com>
 Description: CDE-style two-panel file manager for amadeOS

@@ -5,7 +5,7 @@ two-panel file manager in Java Swing with the look of the CDE desktop and the ke
 orthodox file managers (Midnight Commander, Total Commander, gnome-commander).
 
 ![License](https://img.shields.io/badge/license-EUPL--1.2-blue)
-![Java](https://img.shields.io/badge/Java-21-orange)
+![Java](https://img.shields.io/badge/Java-25-orange)
 ![Debian](https://img.shields.io/badge/Debian-package-red)
 
 > Status: early development (0.1.0). Browsing, copy, move, rename, new folder, trash and permanent
@@ -105,7 +105,7 @@ hidden files, one or two panels, and the folders of both panels when the File Ma
 
 ## Architecture
 
-Java 21, Swing, Guice; same structure as [amade-mail](https://github.com/datazuul/amade-mail) and
+Java 25, Swing, Guice; same structure as [amade-mail](https://github.com/datazuul/amade-mail) and
 [amade-pad](https://github.com/datazuul/amade-pad). Theme, Motif look, start-up and XDG helpers come
 from [amade-commons](https://github.com/datazuul/amade-commons), so the File Manager follows the desktop
 theme chosen in the Style Manager immediately.
@@ -123,7 +123,7 @@ arrives after the user moved on is dropped. Only one copy, move or delete runs a
 
 ## Building and testing
 
-Requirements: Java 21 JDK; `dpkg-deb` for the Debian package.
+Requirements: Java 25 JDK; `dpkg-deb` for the Debian package.
 
 `amade-commons` is taken from JitPack. If it is checked out next to this repository
 (`../amade-commons`), Gradle builds that checkout instead, so changes to both can be tested together.
