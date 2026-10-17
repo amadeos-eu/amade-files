@@ -31,6 +31,9 @@ final class MainMenuBar extends JMenuBar {
         file.add(item("Move to Trash", key(KeyEvent.VK_F8, 0), presenter::moveToTrash));
         file.add(item("Delete Permanently…", key(KeyEvent.VK_F8, shift), presenter::deletePermanently));
         file.addSeparator();
+        file.add(item("Restore from Trash", null, presenter::restore));
+        file.add(item("Empty Trash…", null, presenter::emptyTrash));
+        file.addSeparator();
         file.add(item("Copy Path", key(KeyEvent.VK_C, ctrl | shift), presenter::copyPaths));
         file.addSeparator();
         file.add(item("Close", key(KeyEvent.VK_Q, ctrl), presenter::exit));
@@ -95,7 +98,7 @@ final class MainMenuBar extends JMenuBar {
                 <tr><td><b>F5 / F6</b></td><td>Copy / move to the other panel</td></tr>
                 <tr><td><b>F7</b></td><td>New folder</td></tr>
                 <tr><td><b>F8, Delete</b></td><td>Move to trash</td></tr>
-                <tr><td><b>Shift+F8, Shift+Delete</b></td><td>Delete permanently</td></tr>
+                <tr><td><b>Shift+F8, Shift+Delete</b></td><td>Delete permanently (in the trash also F8)</td></tr>
                 <tr><td><b>Ctrl+H</b></td><td>Show hidden files</td></tr>
                 <tr><td><b>Ctrl+L</b></td><td>Go to folder</td></tr>
                 <tr><td><b>Ctrl+U</b></td><td>Swap panels</td></tr>

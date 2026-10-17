@@ -32,6 +32,7 @@ import java.util.Map;
 public final class MainWindow extends JFrame implements MainView {
     private final Map<Side, FilePanel> panels = new EnumMap<>(Side.class);
     private final Map<Side, Path> dirs = new EnumMap<>(Side.class);
+    private final Map<Side, Boolean> trashViews = new EnumMap<>(Side.class);
     private final JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
     private final JPanel center = new JPanel(new BorderLayout());
     private final JLabel status = new JLabel(" ");
@@ -188,7 +189,8 @@ public final class MainWindow extends JFrame implements MainView {
 
     private void updateTitle() {
         Path dir = dirs.get(active);
-        setTitle(dir == null ? "File Manager" : "File Manager - " + dir);
+        if (Boolean.TRUE.equals(trashViews.get(active))) setTitle("File Manager - Trash");
+        else setTitle(dir == null ? "File Manager" : "File Manager - " + dir);
     }
 
     // ---- selection commands of the Edit menu ----------------------------------------------------
@@ -213,6 +215,13 @@ public final class MainWindow extends JFrame implements MainView {
     @Override
     public void setPanelStatus(Side side, String text) {
         panels.get(side).setStatus(text);
+    }
+
+    @Override
+    public void setTrashView(Side side, boolean trash) {
+        trashViews.put(side, trash);
+        panels.get(side).setTrashView(trash);
+        if (side == active) updateTitle();
     }
 
     @Override

@@ -2,6 +2,7 @@ package org.datazuul.amadeos.files.service;
 
 import com.google.inject.Inject;
 import org.datazuul.amadeos.commons.desktop.DesktopLauncher;
+import org.datazuul.amadeos.commons.desktop.LaunchFeedback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,7 +16,8 @@ import java.util.Optional;
 /**
  * Opens files with the user's applications. Plain text (logs, configuration and dot files, files
  * without extension) opens in the amadeOS Text Editor, as the CDE File Manager opened text in its
- * editor; everything else with the default application for its type ({@code xdg-open}).
+ * editor; everything else with the default application for its type ({@code xdg-open}). Either way
+ * the amadeOS window manager shows the busy cursor until the application's window appears.
  */
 public class Opener {
     private static final Logger LOG = LoggerFactory.getLogger(Opener.class);
@@ -67,6 +69,8 @@ public class Opener {
 
     private static void start(Path editor, Path file) {
         try {
+            // The window manager shows the busy cursor until the editor's window appears.
+            LaunchFeedback.announce();
             new ProcessBuilder(editor.toString(), file.toString())
                     .redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")))
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)

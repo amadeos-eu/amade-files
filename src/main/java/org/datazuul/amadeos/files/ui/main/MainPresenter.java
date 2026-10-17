@@ -72,10 +72,15 @@ public final class MainPresenter {
         FileEntry current;
         long free = -1;
         int generation;
+        /** The folder is the {@code files} folder of a trash. */
+        boolean inTrash;
     }
 
-    private record Listing(List<FileEntry> entries, long free) {
+    private record Listing(List<FileEntry> entries, long free, boolean inTrash) {
     }
+
+    /** The argument that opens the trash, as the front panel's Trash Can passes it. */
+    static final String TRASH_ARGUMENT = "trash:";
 
     @Inject
     public MainPresenter(MainView view, FileSystemService fileSystem, FileOperations operations, TrashService trash,
@@ -104,7 +109,7 @@ public final class MainPresenter {
 
     /**
      * @param arguments folders (or files, whose folder is shown with the file selected) for the left and
-     *                  right panel, as passed by the desktop entry
+     *                  right panel, as passed by the desktop entry; {@code trash:} is the home trash
      */
     public void start(List<String> arguments) {
         try {
@@ -119,7 +124,13 @@ public final class MainPresenter {
             int index = side.ordinal();
             Path start = null;
             String focus = null;
-            if (arguments.size() > index) {
+            if (arguments.size() > index && arguments.get(index).strip().startsWith(TRASH_ARGUMENT)) {
+                try {
+                    start = trash.ensureHomeTrash();
+                } catch (TrashUnavailableException e) {
+                    view.showError(e.getMessage());
+                }
+            } else if (arguments.size() > index) {
                 Path argument = toPath(arguments.get(index), home);
                 if (argument != null && Files.isDirectory(argument)) {
                     start = argument;
@@ -180,6 +191,11 @@ public final class MainPresenter {
     public void up(Side side) {
         PanelState panel = panels.get(side);
         if (panel.dir == null || panel.dir.getParent() == null) return;
+        // Above the trash lie its files and info folders, which are not for browsing.
+        if (panel.inTrash) {
+            load(side, home, null);
+            return;
+        }
         load(side, panel.dir.getParent(), panel.dir.getFileName().toString());
     }
 
@@ -208,13 +224,23 @@ public final class MainPresenter {
         int generation = ++panel.generation;
         Path folder = dir.toAbsolutePath().normalize();
         boolean showHidden = preferences.showHidden();
-        async(() -> new Listing(fileSystem.list(folder, showHidden), fileSystem.freeSpace(folder)), listing -> {
+        async(() -> {
+            // The trash shows everything that is in it, with where it came from; no parent line.
+            boolean inTrash = trash.isTrashFiles(folder);
+            List<FileEntry> entries = fileSystem.list(folder, showHidden || inTrash);
+            if (inTrash) {
+                entries = entries.stream().filter(e -> !e.isParent()).map(e -> e.withTrash(trash.info(e.path()))).toList();
+            }
+            return new Listing(entries, fileSystem.freeSpace(folder), inTrash);
+        }, listing -> {
             if (generation != panel.generation) return;
             panel.dir = folder;
+            panel.inTrash = listing.inTrash();
             panel.entries = listing.entries().stream().sorted(panel.sort.comparator()).toList();
             panel.free = listing.free();
             panel.selected = List.of();
             panel.current = null;
+            view.setTrashView(side, panel.inTrash);
             view.showDirectory(side, folder, panel.entries, panel.sort, focusName);
             updateStatus(side);
         }, error -> {
@@ -250,6 +276,9 @@ public final class MainPresenter {
         } else if (panel.current != null && !panel.current.isParent()) {
             FileEntry e = panel.current;
             text = e.isDirectory() ? e.name() + "/" : e.name() + ", " + Formats.size(e.size());
+            if (e.trash() != null) text += ", from " + e.trash().originalFolder();
+        } else if (panel.inTrash && items.isEmpty()) {
+            text = "The trash is empty.";
         } else {
             text = Formats.count(items.size(), "item");
         }
@@ -361,8 +390,12 @@ public final class MainPresenter {
         }, view::showError);
     }
 
-    /** F8 / Delete: to the trash, without asking, as it can be undone. */
+    /** F8 / Delete: to the trash, without asking, as it can be undone. In the trash: for good, after asking. */
     public void moveToTrash() {
+        if (panels.get(active).inTrash) {
+            deletePermanently();
+            return;
+        }
         List<FileEntry> items = targets(active);
         if (items.isEmpty()) {
             view.setStatus("Nothing selected.");
@@ -409,8 +442,79 @@ public final class MainPresenter {
     }
 
     private void deleteNow(List<Path> paths) {
-        runOperation("Deleting", listener -> operations.delete(paths, listener),
-                summary -> "Deleted " + Formats.count(summary.done(), "file") + ".");
+        boolean inTrash = panels.get(active).inTrash;
+        runOperation("Deleting", listener -> {
+            Summary summary = operations.delete(paths, listener);
+            if (inTrash) trash.forget(paths);
+            return summary;
+        }, summary -> "Deleted " + Formats.count(summary.done(), "file") + ".");
+    }
+
+    // ---- the trash ------------------------------------------------------------------------------
+
+    /** Puts the marked trashed files back where they came from. */
+    public void restore() {
+        PanelState panel = panels.get(active);
+        if (!panel.inTrash) {
+            view.setStatus("Restore works in the trash (Go → Trash).");
+            return;
+        }
+        List<FileEntry> items = targets(active);
+        if (items.isEmpty()) {
+            view.setStatus("Nothing selected.");
+            return;
+        }
+        List<Path> paths = items.stream().map(FileEntry::path).toList();
+        List<Path> restored = new ArrayList<>();
+        async(() -> {
+            try {
+                for (Path path : paths) restored.add(trash.restore(path));
+                return null;
+            } catch (FileOperationException e) {
+                return e.getMessage();
+            }
+        }, error -> {
+            if (restored.size() == 1) view.setStatus("Restored " + restored.getFirst() + ".");
+            else if (!restored.isEmpty()) view.setStatus("Restored " + Formats.count(restored.size(), "item") + ".");
+            refresh();
+            if (error != null) view.showError(error);
+        }, error -> {
+            view.showError(error);
+            refresh();
+        });
+    }
+
+    /** Deletes everything in the trash shown in the active panel, or in the home trash, after asking. */
+    public void emptyTrash() {
+        PanelState panel = panels.get(active);
+        Path files;
+        List<Path> paths;
+        if (panel.inTrash) {
+            files = panel.dir;
+            paths = panel.entries.stream().map(FileEntry::path).toList();
+        } else {
+            try {
+                files = trash.ensureHomeTrash();
+                paths = fileSystem.list(files, true).stream().filter(e -> !e.isParent()).map(FileEntry::path).toList();
+            } catch (FileOperationException e) {
+                view.showError(e.getMessage());
+                return;
+            }
+        }
+        if (paths.isEmpty()) {
+            view.setStatus("The trash is empty.");
+            return;
+        }
+        if (!view.confirm("Empty Trash", "Delete " + Formats.count(paths.size(), "item")
+                + " in the trash permanently? This cannot be undone.")) {
+            return;
+        }
+        Path trashFiles = files;
+        runOperation("Emptying the trash", listener -> {
+            Summary summary = operations.delete(paths, listener);
+            trash.clearInfo(trashFiles);
+            return summary;
+        }, summary -> "Emptied the trash: deleted " + Formats.count(summary.done(), "file") + ".");
     }
 
     /** The marked lines, or the line under the cursor; never the parent entry. */
@@ -508,12 +612,11 @@ public final class MainPresenter {
     }
 
     public void goTrash() {
-        Path files = trash.homeTrashFiles();
-        if (!Files.isDirectory(files)) {
-            view.setStatus("The trash is empty.");
-            return;
+        try {
+            load(active, trash.ensureHomeTrash(), null);
+        } catch (TrashUnavailableException e) {
+            view.showError(e.getMessage());
         }
-        load(active, files, null);
     }
 
     /** Ctrl+L: types a folder; {@code ~} is the home folder, relative paths start at the panel's folder. */

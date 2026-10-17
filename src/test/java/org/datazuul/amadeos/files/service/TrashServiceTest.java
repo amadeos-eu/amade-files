@@ -1,5 +1,6 @@
 package org.datazuul.amadeos.files.service;
 
+import org.datazuul.amadeos.files.domain.TrashInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -10,6 +11,8 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 
@@ -109,5 +112,77 @@ class TrashServiceTest {
         Path mount = TrashService.mountPoint(dir);
         assertTrue(dir.toAbsolutePath().startsWith(mount) || dir.toAbsolutePath().toString().startsWith(mount.toString()),
                 mount + " should contain " + dir);
+    }
+
+    @Test
+    void recognisesTrashFoldersAndReadsTheInfo() throws IOException {
+        Path file = Files.writeString(dir.resolve("my report.odt"), "r");
+        Path trashed = trash.trash(file);
+
+        assertTrue(trash.isTrashFiles(trashDir.resolve("files")));
+        assertFalse(trash.isTrashFiles(trashDir));
+        assertFalse(trash.isTrashFiles(dir));
+        Path topTrash = Files.createDirectories(dir.resolve("stick/.Trash-1000/files"));
+        Files.createDirectories(dir.resolve("stick/.Trash-1000/info"));
+        assertTrue(trash.isTrashFiles(topTrash));
+        Path sharedTrash = Files.createDirectories(dir.resolve("disk/.Trash/1000/files"));
+        Files.createDirectories(dir.resolve("disk/.Trash/1000/info"));
+        assertTrue(trash.isTrashFiles(sharedTrash));
+        assertFalse(trash.isTrashFiles(dir.resolve("stick/.Trash-1001/files")), "another user's trash");
+
+        TrashInfo info = trash.info(trashed);
+        assertEquals(file, info.originalPath());
+        assertEquals(dir, info.originalFolder());
+        assertEquals(LocalDateTime.of(2026, 10, 13, 18, 15, 30).atZone(ZoneId.systemDefault()).toInstant(), info.deletedAt());
+        assertNull(trash.info(trashDir.resolve("files/unknown")));
+    }
+
+    @Test
+    void relativePathsOfATopDirectoryTrashResolveAgainstItsFolder() throws IOException {
+        Files.createDirectories(dir.resolve("stick/.Trash-1000/files"));
+        Files.createDirectories(dir.resolve("stick/.Trash-1000/info"));
+        Files.writeString(dir.resolve("stick/.Trash-1000/files/photo.jpg"), "p");
+        Files.writeString(dir.resolve("stick/.Trash-1000/info/photo.jpg.trashinfo"),
+                "[Trash Info]\nPath=Fotos/Urlaub%202026/photo.jpg\nDeletionDate=2026-10-01T10:00:00\n");
+        Files.createDirectories(dir.resolve("disk/.Trash/1000/files"));
+        Files.createDirectories(dir.resolve("disk/.Trash/1000/info"));
+        Files.writeString(dir.resolve("disk/.Trash/1000/files/a"), "a");
+        Files.writeString(dir.resolve("disk/.Trash/1000/info/a.trashinfo"), "[Trash Info]\nPath=x/a\n");
+
+        assertEquals(dir.resolve("stick/Fotos/Urlaub 2026/photo.jpg"),
+                trash.info(dir.resolve("stick/.Trash-1000/files/photo.jpg")).originalPath());
+        TrashInfo shared = trash.info(dir.resolve("disk/.Trash/1000/files/a"));
+        assertEquals(dir.resolve("disk/x/a"), shared.originalPath());
+        assertNull(shared.deletedAt());
+        assertEquals("Grüße & Co", TrashService.decodePath(TrashService.encodePath("Grüße & Co")));
+    }
+
+    @Test
+    void restoresAndForgets() throws IOException {
+        Path folder = Files.createDirectories(dir.resolve("docs/2026"));
+        Path file = Files.writeString(folder.resolve("report.odt"), "r");
+        Path trashed = trash.trash(file);
+        // The folder is gone too; restoring recreates it.
+        Files.delete(folder);
+
+        assertEquals(file, trash.restore(trashed));
+        assertEquals("r", Files.readString(file));
+        assertFalse(Files.exists(trashed));
+        assertFalse(Files.exists(trashDir.resolve("info/report.odt.trashinfo")));
+
+        Path again = trash.trash(file);
+        Files.writeString(file, "new");
+        FileOperationException e = assertThrows(FileOperationException.class, () -> trash.restore(again));
+        assertTrue(e.getMessage().contains("already exists"), e.getMessage());
+        assertTrue(Files.exists(again), "stays in the trash");
+
+        Path orphan = Files.writeString(trashDir.resolve("files/orphan"), "o");
+        assertThrows(FileOperationException.class, () -> trash.restore(orphan));
+
+        trash.forget(List.of(again));
+        assertFalse(Files.exists(trashDir.resolve("info/report.odt.trashinfo")));
+        Files.writeString(trashDir.resolve("info/stale.trashinfo"), "[Trash Info]\nPath=/x\n");
+        trash.clearInfo(trashDir.resolve("files"));
+        assertEquals(0, Files.list(trashDir.resolve("info")).count());
     }
 }

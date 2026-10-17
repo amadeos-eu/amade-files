@@ -15,9 +15,10 @@ import java.util.Objects;
  * @param permissions {@code rwxr-xr-x} style, empty if the file system has none
  * @param symlink     the entry is a symbolic link
  * @param executable  the owner may execute the file
+ * @param trash       for a file in the trash: where it came from and when; null elsewhere
  */
 public record FileEntry(Path path, String name, Kind kind, long size, Instant modified, String permissions,
-                        boolean symlink, boolean executable) {
+                        boolean symlink, boolean executable, TrashInfo trash) {
 
     public enum Kind {
         /** The {@code ..} line leading to the parent folder. */
@@ -33,6 +34,16 @@ public record FileEntry(Path path, String name, Kind kind, long size, Instant mo
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(kind, "kind");
         permissions = permissions == null ? "" : permissions;
+    }
+
+    public FileEntry(Path path, String name, Kind kind, long size, Instant modified, String permissions,
+                     boolean symlink, boolean executable) {
+        this(path, name, kind, size, modified, permissions, symlink, executable, null);
+    }
+
+    /** The same entry with the trash information of its {@code .trashinfo} file. */
+    public FileEntry withTrash(TrashInfo info) {
+        return new FileEntry(path, name, kind, size, modified, permissions, symlink, executable, info);
     }
 
     public static FileEntry parent(Path parent) {

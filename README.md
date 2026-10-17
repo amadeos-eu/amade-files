@@ -8,8 +8,8 @@ orthodox file managers (Midnight Commander, Total Commander, gnome-commander).
 ![Java](https://img.shields.io/badge/Java-25-orange)
 ![Debian](https://img.shields.io/badge/Debian-package-red)
 
-> Status: early development (0.1.0). Browsing, copy, move, rename, new folder, trash and permanent
-> delete work; see *Roadmap*.
+> Status: early development (0.1.0). Browsing, copy, move, rename, new folder, trash (with restore
+> and empty) and permanent delete work; see *Roadmap*.
 
 ---
 
@@ -52,7 +52,7 @@ orthodox file managers (Midnight Commander, Total Commander, gnome-commander).
 | F3 / F4 | View (default application) / edit in the Text Editor (amade-pad) |
 | F5 / F6 | Copy / move to the other panel (the target can be changed) |
 | F7 | New folder |
-| F8, Delete | Move to trash |
+| F8, Delete | Move to trash (in the trash: delete permanently, asks first) |
 | Shift+F8, Shift+Delete | Delete permanently (asks first) |
 | Ctrl+H | Show hidden files |
 | Ctrl+L | Go to folder (`~` and relative paths work) |
@@ -90,7 +90,19 @@ so other desktops and `gio trash --list` see the files and can restore them:
 - If a file system has no usable trash (e.g. read-only), the File Manager offers to delete
   permanently.
 
-*Go → Trash* shows the home trash; restoring and emptying from the File Manager are on the roadmap.
+*Go → Trash*, the Trash Can of the amadeOS front panel (`amade-files trash:`) or entering the `files`
+folder of any trash shows the **trash view**: each file with the folder it came from and when it was
+trashed (from its `.trashinfo`), no parent line, and *Backspace* leads back to the home folder.
+*File → Restore from Trash* puts the marked files back where they came from, recreating missing
+folders and refusing to replace a file that is there now; *File → Empty Trash…* deletes everything
+in the trash after asking; F8 in the trash deletes the marked files for good, after asking. The
+`.trashinfo` files go with their files.
+
+## Launch feedback
+
+While a document's application or the Text Editor starts, the amadeOS window manager shows the busy
+cursor until the new window appears (`LaunchFeedback` from amade-commons, an X11 message sent through
+the foreign function API; the jar manifest grants native access).
 
 ## Security
 
@@ -112,9 +124,9 @@ theme chosen in the Style Manager immediately.
 
 | Package | Content |
 |---|---|
-| `domain` | `FileEntry`, `SortOrder`, `SortKey`, `Side`, `FilePreferences`, `Resolution`, `Progress` |
+| `domain` | `FileEntry`, `TrashInfo`, `SortOrder`, `SortKey`, `Side`, `FilePreferences`, `Resolution`, `Progress` |
 | `repository` | `PreferencesRepository` (`files.conf`) |
-| `service` | `FileSystemService` (list, new folder, rename), `FileOperations` (copy, move, delete with progress and conflicts), `TrashService` (freedesktop trash), `Opener` (default application, Text Editor), `Formats` |
+| `service` | `FileSystemService` (list, new folder, rename), `FileOperations` (copy, move, delete with progress and conflicts), `TrashService` (freedesktop trash: trash, info, restore, empty), `Opener` (default application, Text Editor), `Formats` |
 | `ui.main` | `MainWindow`, `MainMenuBar`, `MainPresenter` (all behaviour, testable without Swing windows) |
 | `ui.panel`, `ui.dialogs` | file panel with iconic path, conflict and progress dialogs |
 
@@ -144,7 +156,7 @@ so the amadeOS front panel lists it in the File Manager drawer.
 - [x] Two panels, iconic path, marks, function-key bar, sorting, hidden files
 - [x] Copy, move, rename, new folder with progress, cancel and conflict dialog
 - [x] Freedesktop trash (home and top-directory trash), permanent delete
-- [ ] Trash view with restore and empty; Front Panel Trash Can integration
+- [x] Trash view with restore and empty; Front Panel Trash Can integration
 - [ ] Watch folders for changes (refresh automatically)
 - [ ] Quick search by typing; filter (`*.jpg`)
 - [ ] Tabs per panel; bookmarks; history (Alt+Left/Right)
