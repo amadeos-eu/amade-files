@@ -2,11 +2,14 @@ package org.datazuul.amadeos.files.service;
 
 import com.google.inject.Inject;
 import org.datazuul.amadeos.commons.config.XdgDirectories;
+import org.datazuul.amadeos.files.domain.TrashInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
@@ -15,8 +18,11 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
@@ -57,6 +63,152 @@ public class TrashService {
     /** Where the trashed files of the home trash are, for "Go → Trash". */
     public Path homeTrashFiles() {
         return homeTrash.resolve("files");
+    }
+
+    /** Creates the home trash if needed and returns its {@code files} folder. */
+    public Path ensureHomeTrash() {
+        try {
+            ensureDirectories(homeTrash, false);
+        } catch (IOException e) {
+            throw new TrashUnavailableException("Cannot create the trash " + homeTrash + ": " + e.getMessage(), e);
+        }
+        return homeTrashFiles();
+    }
+
+    // ---- the trash as a folder: info, restore, empty --------------------------------------------
+
+    /**
+     * True for the {@code files} folder of a trash: the home trash, or {@code .Trash-$uid} and
+     * {@code .Trash/$uid} on another file system. Such a folder is shown as the trash, with the origin
+     * of each file and with Restore and Empty Trash.
+     */
+    public boolean isTrashFiles(Path dir) {
+        Path files = dir.toAbsolutePath().normalize();
+        Path root = files.getParent();
+        if (root == null || !"files".equals(String.valueOf(files.getFileName()))
+                || !Files.isDirectory(root.resolve("info"))) {
+            return false;
+        }
+        if (root.equals(homeTrash.toAbsolutePath().normalize())) return true;
+        String name = String.valueOf(root.getFileName());
+        if (name.equals(".Trash-" + uid)) return true;
+        Path shared = root.getParent();
+        return shared != null && ".Trash".equals(String.valueOf(shared.getFileName())) && name.equals(Integer.toString(uid));
+    }
+
+    /**
+     * Where a trashed file came from and when, from its {@code .trashinfo}; null if there is none or
+     * it cannot be read. Relative paths of a top-directory trash are resolved against that file system's
+     * top folder.
+     */
+    public TrashInfo info(Path trashedFile) {
+        Path info = infoFile(trashedFile);
+        String path = null;
+        Instant deleted = null;
+        try {
+            for (String line : Files.readAllLines(info, StandardCharsets.UTF_8)) {
+                // The first Path and DeletionDate count, as the specification says.
+                if (line.startsWith("Path=") && path == null) path = decodePath(line.substring(5).strip());
+                else if (line.startsWith("DeletionDate=") && deleted == null) deleted = parseDate(line.substring(13).strip());
+            }
+        } catch (IOException | RuntimeException e) {
+            LOG.debug("No trash info for {}", trashedFile, e);
+            return null;
+        }
+        if (path == null || path.isEmpty()) return null;
+        Path original = Path.of(path);
+        if (!original.isAbsolute()) original = topOf(trashedFile.toAbsolutePath().normalize().getParent().getParent()).resolve(original);
+        return new TrashInfo(original.normalize(), deleted);
+    }
+
+    /**
+     * Moves a trashed file back to where it came from, creating missing folders on the way; refuses to
+     * replace a file that is there now.
+     *
+     * @return the restored path
+     */
+    public Path restore(Path trashedFile) {
+        Path file = trashedFile.toAbsolutePath().normalize();
+        TrashInfo info = info(file);
+        if (info == null) {
+            throw new FileOperationException("The trash does not say where " + file.getFileName() + " came from.");
+        }
+        Path target = info.originalPath();
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw new FileOperationException(target + " already exists; move it away first.");
+        }
+        try {
+            if (target.getParent() != null) Files.createDirectories(target.getParent());
+            Files.move(file, target);
+        } catch (IOException e) {
+            throw new FileOperationException("Cannot restore " + file.getFileName() + " to " + target + ": "
+                    + e.getMessage(), e);
+        }
+        forget(List.of(file));
+        return target;
+    }
+
+    /** Removes the {@code .trashinfo} files of trashed files that were deleted for good. */
+    public void forget(List<Path> trashedFiles) {
+        for (Path file : trashedFiles) {
+            try {
+                Files.deleteIfExists(infoFile(file));
+            } catch (IOException e) {
+                LOG.warn("Cannot remove the trash info of {}", file, e);
+            }
+        }
+    }
+
+    /** Removes every {@code .trashinfo} of a trash, after its files were deleted (Empty Trash). */
+    public void clearInfo(Path trashFiles) {
+        Path info = trashFiles.toAbsolutePath().normalize().resolveSibling("info");
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(info)) {
+            for (Path entry : stream) Files.deleteIfExists(entry);
+        } catch (IOException e) {
+            LOG.warn("Cannot clear {}", info, e);
+        }
+    }
+
+    static Path infoFile(Path trashedFile) {
+        Path file = trashedFile.toAbsolutePath().normalize();
+        return file.getParent().resolveSibling("info").resolve(file.getFileName() + ".trashinfo");
+    }
+
+    /** The folder a top-directory trash belongs to: {@code .Trash-$uid} and {@code .Trash/$uid} lie in it. */
+    private static Path topOf(Path trashRoot) {
+        Path parent = trashRoot.getParent();
+        if (parent != null && ".Trash".equals(String.valueOf(parent.getFileName())) && parent.getParent() != null) {
+            return parent.getParent();
+        }
+        return parent != null ? parent : trashRoot;
+    }
+
+    private static Instant parseDate(String text) {
+        try {
+            return LocalDateTime.parse(text, DELETION_DATE).atZone(ZoneId.systemDefault()).toInstant();
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    /** The inverse of {@link #encodePath}: {@code %20} and friends back to UTF-8 characters. */
+    static String decodePath(String encoded) {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        for (int i = 0; i < encoded.length(); i++) {
+            char c = encoded.charAt(i);
+            if (c == '%' && i + 2 < encoded.length()) {
+                int hi = Character.digit(encoded.charAt(i + 1), 16);
+                int lo = Character.digit(encoded.charAt(i + 2), 16);
+                if (hi >= 0 && lo >= 0) {
+                    bytes.write(hi << 4 | lo);
+                    i += 2;
+                    continue;
+                }
+            }
+            byte[] utf8 = String.valueOf(c).getBytes(StandardCharsets.UTF_8);
+            bytes.write(utf8, 0, utf8.length);
+        }
+        return bytes.toString(StandardCharsets.UTF_8);
     }
 
     /**

@@ -71,12 +71,7 @@ public final class FilePanel extends JPanel {
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.setAutoResizeMode(JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
         table.getTableHeader().setReorderingAllowed(false);
-        Renderer renderer = new Renderer();
-        for (int i = 0; i < model.getColumnCount(); i++) table.getColumnModel().getColumn(i).setCellRenderer(renderer);
-        width(FileTableModel.NAME, 260, -1);
-        width(FileTableModel.SIZE, 70, 110);
-        width(FileTableModel.MODIFIED, 120, 170);
-        width(FileTableModel.PERMISSIONS, 80, 100);
+        configureColumns();
         table.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting() && !updating) fireSelection();
         });
@@ -99,7 +94,7 @@ public final class FilePanel extends JPanel {
         header.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                SortKey key = FileTableModel.sortKey(header.columnAtPoint(e.getPoint()));
+                SortKey key = model.sortKey(header.columnAtPoint(e.getPoint()));
                 if (key != null && listener != null) listener.sortBy(key);
             }
         });
@@ -162,6 +157,14 @@ public final class FilePanel extends JPanel {
         status.setText(text == null || text.isEmpty() ? " " : text);
     }
 
+    /** Trash columns (origin, deletion date) or the usual ones; called before {@link #show}. */
+    public void setTrashView(boolean trash) {
+        if (model.isTrashView() == trash) return;
+        model.setTrashView(trash);
+        // The table made new columns for the new structure: renderer and widths again.
+        configureColumns();
+    }
+
     public void setActive(boolean active) {
         pathBar.setActive(active);
         table.repaint();
@@ -183,9 +186,23 @@ public final class FilePanel extends JPanel {
 
     // ---- internals ------------------------------------------------------------------------------
 
+    private void configureColumns() {
+        Renderer renderer = new Renderer();
+        for (int i = 0; i < model.getColumnCount(); i++) table.getColumnModel().getColumn(i).setCellRenderer(renderer);
+        width(FileTableModel.NAME, 260, -1);
+        width(FileTableModel.SIZE, 70, 110);
+        if (model.isTrashView()) {
+            width(FileTableModel.ORIGIN, 220, -1);
+            width(FileTableModel.DELETED, 120, 170);
+        } else {
+            width(FileTableModel.MODIFIED, 120, 170);
+            width(FileTableModel.PERMISSIONS, 80, 100);
+        }
+    }
+
     /** "Name ▲" on the sorted column. */
     private void showSortInHeader() {
-        int sorted = FileTableModel.column(sort.key());
+        int sorted = model.column(sort.key());
         for (int i = 0; i < model.getColumnCount(); i++) {
             String name = model.getColumnName(i);
             table.getColumnModel().getColumn(i).setHeaderValue(i == sorted ? name + (sort.ascending() ? " ▲" : " ▼") : name);

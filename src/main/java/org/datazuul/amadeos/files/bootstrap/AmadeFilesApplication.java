@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * Entry point. Arguments are folders (or files) for the left and right panel, as passed by the
- * desktop entry.
+ * desktop entry; {@code trash:} opens the trash, as the front panel's Trash Can does.
  */
 public final class AmadeFilesApplication {
     public static final AppInfo APP = new AppInfo("amade-files", "File Manager", "files");

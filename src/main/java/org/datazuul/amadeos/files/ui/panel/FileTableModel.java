@@ -20,11 +20,27 @@ final class FileTableModel extends AbstractTableModel {
     static final int SIZE = 1;
     static final int MODIFIED = 2;
     static final int PERMISSIONS = 3;
+    /** Trash view: the folder a file came from and when it was trashed, instead of the last two columns. */
+    static final int ORIGIN = 2;
+    static final int DELETED = 3;
     private static final String[] COLUMNS = {"Name", "Size", "Modified", "Permissions"};
+    private static final String[] TRASH_COLUMNS = {"Name", "Size", "Original Folder", "Deleted"};
     private static final SortKey[] SORT_KEYS = {SortKey.NAME, SortKey.SIZE, SortKey.MODIFIED, null};
+    private static final SortKey[] TRASH_SORT_KEYS = {SortKey.NAME, SortKey.SIZE, null, null};
 
     private List<FileEntry> entries = List.of();
     private final Set<Path> marked = new HashSet<>();
+    private boolean trashView;
+
+    boolean isTrashView() {
+        return trashView;
+    }
+
+    void setTrashView(boolean trash) {
+        if (trashView == trash) return;
+        trashView = trash;
+        fireTableStructureChanged();
+    }
 
     void setEntries(List<FileEntry> newEntries) {
         entries = List.copyOf(newEntries);
@@ -81,12 +97,14 @@ final class FileTableModel extends AbstractTableModel {
         return result;
     }
 
-    static SortKey sortKey(int column) {
-        return column >= 0 && column < SORT_KEYS.length ? SORT_KEYS[column] : null;
+    SortKey sortKey(int column) {
+        SortKey[] keys = trashView ? TRASH_SORT_KEYS : SORT_KEYS;
+        return column >= 0 && column < keys.length ? keys[column] : null;
     }
 
-    static int column(SortKey key) {
-        for (int i = 0; i < SORT_KEYS.length; i++) if (SORT_KEYS[i] == key) return i;
+    int column(SortKey key) {
+        SortKey[] keys = trashView ? TRASH_SORT_KEYS : SORT_KEYS;
+        for (int i = 0; i < keys.length; i++) if (keys[i] == key) return i;
         return -1;
     }
 
@@ -102,12 +120,21 @@ final class FileTableModel extends AbstractTableModel {
 
     @Override
     public String getColumnName(int column) {
-        return COLUMNS[column];
+        return (trashView ? TRASH_COLUMNS : COLUMNS)[column];
     }
 
     @Override
     public Object getValueAt(int row, int column) {
         FileEntry e = entries.get(row);
+        if (trashView) {
+            return switch (column) {
+                case NAME -> e.name();
+                case SIZE -> e.isDirectory() ? "<DIR>" : Formats.size(e.size());
+                case ORIGIN -> e.trash() == null ? "" : e.trash().originalFolder().toString();
+                case DELETED -> e.trash() == null ? "" : Formats.date(e.trash().deletedAt());
+                default -> "";
+            };
+        }
         return switch (column) {
             case NAME -> e.isParent() ? ".." : e.name();
             case SIZE -> e.isParent() ? "" : e.isDirectory() ? "<DIR>" : Formats.size(e.size());

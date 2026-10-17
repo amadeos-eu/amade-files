@@ -19,6 +19,9 @@ public interface MainView {
 
     void setPanelStatus(Side side, String text);
 
+    /** The panel shows a trash: origin and deletion date instead of modification date and permissions. */
+    void setTrashView(Side side, boolean trash);
+
     void setActive(Side side);
 
     void setTwoPanels(boolean twoPanels);

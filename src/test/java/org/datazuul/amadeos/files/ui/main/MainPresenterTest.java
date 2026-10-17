@@ -196,6 +196,80 @@ class MainPresenterTest {
     }
 
     @Test
+    void theTrashShowsOriginsAndRestores() throws IOException {
+        presenter.start(List.of());
+        cursor(Side.LEFT, "a.txt");
+        presenter.moveToTrash();
+        presenter.selectionChanged(Side.LEFT, List.of(), entry(Side.LEFT, "Docs"));
+        presenter.moveToTrash();
+
+        presenter.goTrash();
+        assertEquals(trash.homeTrashFiles(), view.dirs.get(Side.LEFT));
+        assertEquals(Boolean.TRUE, view.trashViews.get(Side.LEFT));
+        assertEquals(List.of("Docs", "a.txt"), names(Side.LEFT), "no parent line in the trash");
+        assertEquals(home, entry(Side.LEFT, "a.txt").trash().originalFolder());
+        assertNotNull(entry(Side.LEFT, "a.txt").trash().deletedAt());
+        cursor(Side.LEFT, "a.txt");
+        assertEquals("a.txt, 1 B, from " + home, view.status.get(Side.LEFT).split(" · ")[0]);
+
+        presenter.restore();
+        assertEquals("a", Files.readString(home.resolve("a.txt")));
+        assertEquals("Restored " + home.resolve("a.txt") + ".", view.message);
+        assertEquals(List.of("Docs"), names(Side.LEFT));
+        assertFalse(Files.exists(trash.homeTrashFiles().resolveSibling("info/a.txt.trashinfo")));
+
+        // Restoring onto an existing file is refused.
+        Files.createDirectory(home.resolve("Docs"));
+        cursor(Side.LEFT, "Docs");
+        presenter.restore();
+        assertTrue(view.error.contains("already exists"), view.error);
+        assertTrue(Files.exists(trash.homeTrashFiles().resolve("Docs")));
+
+        // Leaving the trash upwards lands in the home folder, not in the trash's own folders.
+        presenter.up(Side.LEFT);
+        assertEquals(home, view.dirs.get(Side.LEFT));
+        assertEquals(Boolean.FALSE, view.trashViews.get(Side.LEFT));
+    }
+
+    @Test
+    void inTheTrashF8DeletesForGoodAndEmptyTrashClearsEverything() throws IOException {
+        presenter.start(List.of());
+        cursor(Side.LEFT, "a.txt");
+        presenter.moveToTrash();
+        cursor(Side.LEFT, "b.txt");
+        presenter.moveToTrash();
+        presenter.goTrash();
+
+        cursor(Side.LEFT, "a.txt");
+        view.confirmations.add(false);
+        presenter.moveToTrash();
+        assertTrue(Files.exists(trash.homeTrashFiles().resolve("a.txt")));
+        view.confirmations.add(true);
+        presenter.moveToTrash();
+        assertFalse(Files.exists(trash.homeTrashFiles().resolve("a.txt")));
+        assertFalse(Files.exists(trash.homeTrashFiles().resolveSibling("info/a.txt.trashinfo")), "info removed too");
+
+        view.confirmations.add(true);
+        presenter.emptyTrash();
+        assertEquals(List.of(), names(Side.LEFT));
+        assertEquals("The trash is empty.", view.status.get(Side.LEFT).split(" · ")[0]);
+        assertEquals(0, Files.list(trash.homeTrashFiles().resolveSibling("info")).count());
+        assertEquals("Emptied the trash: deleted 1 file.", view.message);
+
+        presenter.emptyTrash();
+        assertEquals("The trash is empty.", view.message);
+    }
+
+    @Test
+    void trashArgumentOpensTheTrashAsTheFrontPanelDoes() {
+        presenter.start(List.of("trash:"));
+        assertEquals(trash.homeTrashFiles(), view.dirs.get(Side.LEFT));
+        assertEquals(Boolean.TRUE, view.trashViews.get(Side.LEFT));
+        assertTrue(Files.isDirectory(trash.homeTrashFiles()), "created on first use");
+        assertEquals(other, view.dirs.get(Side.RIGHT));
+    }
+
+    @Test
     void newFolderAndRenamePutTheCursorOnTheResult() {
         presenter.start(List.of());
         view.answers.add("Projects");
@@ -279,6 +353,7 @@ class MainPresenterTest {
         final Map<Side, List<FileEntry>> entries = new EnumMap<>(Side.class);
         final Map<Side, String> focus = new EnumMap<>(Side.class);
         final Map<Side, String> status = new EnumMap<>(Side.class);
+        final Map<Side, Boolean> trashViews = new EnumMap<>(Side.class);
         final Deque<String> answers = new ArrayDeque<>();
         final Deque<Boolean> confirmations = new ArrayDeque<>();
         final Deque<ConflictChoice> conflicts = new ArrayDeque<>();
@@ -302,6 +377,11 @@ class MainPresenterTest {
         @Override
         public void setPanelStatus(Side side, String text) {
             status.put(side, text);
+        }
+
+        @Override
+        public void setTrashView(Side side, boolean trash) {
+            trashViews.put(side, trash);
         }
 
         @Override

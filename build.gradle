@@ -26,7 +26,7 @@ repositories {
 dependencies {
     // Theme, Motif look, start-up and XDG helpers shared by all amadeOS applications.
     // With ../amade-commons checked out, settings.gradle builds that checkout instead (composite build).
-    implementation 'com.github.datazuul:amade-commons:c028597ed9'
+    implementation 'com.github.datazuul:amade-commons:391b2c9900'
 
     runtimeOnly 'ch.qos.logback:logback-classic:1.5.18'
 
@@ -46,7 +46,9 @@ jar {
         attributes(
             'Main-Class': mainClassName,
             'Implementation-Title': 'amade-files',
-            'Implementation-Version': project.version
+            'Implementation-Version': project.version,
+            // LaunchFeedback (amade-commons) talks to the X server through the foreign function API.
+            'Enable-Native-Access': 'ALL-UNNAMED'
         )
     }
     from {
