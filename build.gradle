@@ -6,7 +6,7 @@ plugins {
 group = 'eu.amadeos'
 version = '0.1.0'
 
-def mainClassName = 'eu.amadeos.files.bootstrap.AmadeFilesApplication'
+def mainClassName = 'eu.amadeos.apps.files.bootstrap.AmadeFilesApplication'
 
 java {
     toolchain {
