@@ -3,10 +3,10 @@ plugins {
     id 'application'
 }
 
-group = 'org.datazuul.amadeos'
+group = 'eu.amadeos'
 version = '0.1.0'
 
-def mainClassName = 'org.datazuul.amadeos.files.bootstrap.AmadeFilesApplication'
+def mainClassName = 'eu.amadeos.apps.files.bootstrap.AmadeFilesApplication'
 
 java {
     toolchain {
@@ -26,7 +26,7 @@ repositories {
 dependencies {
     // Theme, Motif look, start-up and XDG helpers shared by all amadeOS applications.
     // With ../amade-commons checked out, settings.gradle builds that checkout instead (composite build).
-    implementation 'com.github.datazuul:amade-commons:391b2c9900'
+    implementation 'com.github.datazuul:amade-commons:78466adc6e'
 
     runtimeOnly 'ch.qos.logback:logback-classic:1.5.18'
 
