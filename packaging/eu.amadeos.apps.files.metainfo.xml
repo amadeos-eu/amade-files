@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata of amade-files, installed as /usr/share/metainfo/eu.amadeos.apps.files.metainfo.xml.
+     amadeOS Software shows it for the installed package; a repository's appstream-generator reads it too. -->
+<component type="desktop-application">
+  <id>eu.amadeos.apps.files</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>EUPL-1.2</project_license>
+
+  <name>amadeOS File Manager</name>
+  <name xml:lang="de">amadeOS Dateimanager</name>
+  <name xml:lang="fr">Gestionnaire de fichiers amadeOS</name>
+  <name xml:lang="es">Gestor de archivos de amadeOS</name>
+  <name xml:lang="it">Gestore di file di amadeOS</name>
+
+  <summary>Manage files in two panels, in the style of the CDE desktop</summary>
+  <summary xml:lang="de">Dateien in zwei Feldern verwalten, im Stil des CDE-Desktops</summary>
+  <summary xml:lang="fr">Gérer les fichiers dans deux panneaux, dans le style du bureau CDE</summary>
+  <summary xml:lang="es">Gestionar archivos en dos paneles, con el estilo del escritorio CDE</summary>
+  <summary xml:lang="it">Gestire i file in due pannelli, nello stile del desktop CDE</summary>
+
+  <description>
+    <p>amade-files is the file manager of the amadeOS desktop. Two panels side by side, an iconic path with one button per folder and a function-key bar make copying and moving between folders quick, with the mouse or the keyboard.</p>
+    <p xml:lang="de">amade-files ist der Dateimanager des amadeOS-Desktops. Zwei Felder nebeneinander, ein Pfad mit einer Schaltfläche pro Ordner und eine Funktionstastenleiste machen das Kopieren und Verschieben zwischen Ordnern schnell, mit der Maus oder der Tastatur.</p>
+    <p xml:lang="fr">amade-files est le gestionnaire de fichiers du bureau amadeOS. Deux panneaux côte à côte, un chemin avec un bouton par dossier et une barre de touches de fonction rendent la copie et le déplacement entre dossiers rapides, à la souris ou au clavier.</p>
+    <p xml:lang="es">amade-files es el gestor de archivos del escritorio amadeOS. Dos paneles uno al lado del otro, una ruta con un botón por carpeta y una barra de teclas de función hacen que copiar y mover entre carpetas sea rápido, con el ratón o el teclado.</p>
+    <p xml:lang="it">amade-files è il gestore di file del desktop amadeOS. Due pannelli affiancati, un percorso con un pulsante per cartella e una barra dei tasti funzione rendono rapidi la copia e lo spostamento tra cartelle, con il mouse o la tastiera.</p>
+    <ul>
+      <li>Copy, move, rename, new folder (F5, F6, F2, F7)</li>
+      <li xml:lang="de">Kopieren, Verschieben, Umbenennen, neuer Ordner (F5, F6, F2, F7)</li>
+      <li xml:lang="fr">Copier, déplacer, renommer, nouveau dossier (F5, F6, F2, F7)</li>
+      <li xml:lang="es">Copiar, mover, renombrar, nueva carpeta (F5, F6, F2, F7)</li>
+      <li xml:lang="it">Copia, sposta, rinomina, nuova cartella (F5, F6, F2, F7)</li>
+      <li>Trash with restore, or delete permanently</li>
+      <li xml:lang="de">Papierkorb mit Wiederherstellen, oder endgültig löschen</li>
+      <li xml:lang="fr">Corbeille avec restauration, ou suppression définitive</li>
+      <li xml:lang="es">Papelera con restauración, o borrado definitivo</li>
+      <li xml:lang="it">Cestino con ripristino, o eliminazione definitiva</li>
+      <li>Mark files with Insert or Space, separately from the cursor</li>
+      <li xml:lang="de">Dateien mit Einfg oder Leertaste markieren, unabhängig vom Cursor</li>
+      <li xml:lang="fr">Marquer des fichiers avec Inser ou Espace, indépendamment du curseur</li>
+      <li xml:lang="es">Marcar archivos con Insert o Espacio, independientemente del cursor</li>
+      <li xml:lang="it">Contrassegnare i file con Ins o Spazio, indipendentemente dal cursore</li>
+      <li>Opens files with their default application</li>
+      <li xml:lang="de">Öffnet Dateien mit ihrem Standardprogramm</li>
+      <li xml:lang="fr">Ouvre les fichiers avec leur application par défaut</li>
+      <li xml:lang="es">Abre los archivos con su aplicación predeterminada</li>
+      <li xml:lang="it">Apre i file con la loro applicazione predefinita</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">amade-files.desktop</launchable>
+  <icon type="stock">amade-files</icon>
+  <categories>
+    <category>System</category>
+    <category>FileManager</category>
+  </categories>
+
+  <url type="homepage">https://github.com/datazuul/amade-files</url>
+  <url type="bugtracker">https://github.com/datazuul/amade-files/issues</url>
+  <developer id="eu.amadeos">
+    <name>amadeOS Project</name>
+  </developer>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Home folder and pictures in two panels</caption>
+      <caption xml:lang="de">Persönlicher Ordner und Bilder in zwei Feldern</caption>
+      <caption xml:lang="fr">Dossier personnel et images dans deux panneaux</caption>
+      <caption xml:lang="es">Carpeta personal e imágenes en dos paneles</caption>
+      <caption xml:lang="it">Cartella personale e immagini in due pannelli</caption>
+      <image>https://raw.githubusercontent.com/datazuul/amade-files/main/docs/screenshots/amade-files.png</image>
+    </screenshot>
+  </screenshots>
+
+  <provides>
+    <binary>amade-files</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+</component>
