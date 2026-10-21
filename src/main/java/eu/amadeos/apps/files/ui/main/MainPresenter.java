@@ -219,6 +219,7 @@ public final class MainPresenter {
         if (panel.dir != null) load(side, panel.dir, panel.current == null ? null : panel.current.name());
     }
 
+    // --8<-- [start:load]
     private void load(Side side, Path dir, String focusName) {
         PanelState panel = panels.get(side);
         int generation = ++panel.generation;
@@ -253,6 +254,7 @@ public final class MainPresenter {
             }
         });
     }
+    // --8<-- [end:load]
 
     private Path existingParent(Path dir) {
         for (Path p = dir.getParent(); p != null; p = p.getParent()) {
@@ -317,10 +319,12 @@ public final class MainPresenter {
         }, ignored -> view.setStatus("Opened " + entry.name() + "."), view::showError);
     }
 
+    // --8<-- [start:can-run]
     /** Executables and launchers (.desktop, .sh, .jar, …) are not opened without asking. */
     static boolean canRunProgram(FileEntry entry) {
         return entry.executable() || (entry.name().lastIndexOf('.') > 0 && DesktopLauncher.isRisky(entry.name()));
     }
+    // --8<-- [end:can-run]
 
     // ---- file operations ------------------------------------------------------------------------
 
@@ -539,6 +543,7 @@ public final class MainPresenter {
         if (other.dir != null && other.dir.equals(panel.dir)) reload(side.other());
     }
 
+    // --8<-- [start:run-operation]
     /**
      * Runs a long operation with a progress dialog. Only one runs at a time; afterwards both panels are
      * read again.
@@ -604,6 +609,7 @@ public final class MainPresenter {
     private <T> T onEdtAndWait(Supplier<T> question) {
         return CompletableFuture.supplyAsync(question, edt).join();
     }
+    // --8<-- [end:run-operation]
 
     // ---- navigation and view --------------------------------------------------------------------
 

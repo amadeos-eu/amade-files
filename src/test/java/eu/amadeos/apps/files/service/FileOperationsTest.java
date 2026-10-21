@@ -27,6 +27,7 @@ class FileOperationsTest {
     private Path source;
     private Path target;
 
+    // --8<-- [start:recorder]
     /** Answers conflicts from a list and records progress. */
     private static final class Recorder implements OperationListener {
         final List<Resolution> answers = new ArrayList<>();
@@ -50,6 +51,7 @@ class FileOperationsTest {
             return cancelAfterFirstProgress && !progress.isEmpty();
         }
     }
+    // --8<-- [end:recorder]
 
     @BeforeEach
     void folders() throws IOException {
@@ -217,6 +219,7 @@ class FileOperationsTest {
         }
     }
 
+    // --8<-- [start:cancel-copy]
     @Test
     void cancellingDuringACopyLeavesNoPartialFile() throws IOException {
         byte[] big = new byte[FileOperations.BLOCK * 3];
@@ -227,6 +230,7 @@ class FileOperationsTest {
         assertThrows(OperationCancelledException.class, () -> operations.copy(List.of(file), target, recorder));
         assertEquals(List.of(), names(target));
     }
+    // --8<-- [end:cancel-copy]
 
     @Test
     void deletesTreesButNotLinkTargets() throws IOException {

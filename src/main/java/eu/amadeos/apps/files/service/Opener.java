@@ -39,6 +39,7 @@ public class Opener {
         this.searchPath = searchPath;
     }
 
+    // --8<-- [start:open]
     /** Plain text in the Text Editor, other files with their default application. */
     public void open(Path file) {
         Optional<Path> editor = findOnPath(EDITOR, searchPath);
@@ -48,6 +49,7 @@ public class Opener {
         }
         openWithDefault(file);
     }
+    // --8<-- [end:open]
 
     /** F4: in the Text Editor whatever the type; without it, with the default application. */
     public void edit(Path file) {
@@ -67,6 +69,7 @@ public class Opener {
         }
     }
 
+    // --8<-- [start:start]
     private static void start(Path editor, Path file) {
         try {
             // The window manager shows the busy cursor until the editor's window appears.
@@ -80,6 +83,7 @@ public class Opener {
             throw new FileOperationException("Cannot start the Text Editor: " + e.getMessage(), e);
         }
     }
+    // --8<-- [end:start]
 
     /**
      * True for text without a more specific type: the type from the file name is {@code text/plain} or

@@ -54,11 +54,13 @@ public final class ProgressDialog extends JDialog implements ProgressView {
         });
         pack();
         setLocationRelativeTo(owner);
+        // --8<-- [start:delay]
         showTimer = new Timer(DELAY_MILLIS, e -> {
             if (!closed) setVisible(true);
         });
         showTimer.setRepeats(false);
         showTimer.start();
+        // --8<-- [end:delay]
     }
 
     @Override

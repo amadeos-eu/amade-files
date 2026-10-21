@@ -31,6 +31,7 @@ class TrashServiceTest {
         trash = new TrashService(trashDir, Clock.fixed(Instant.parse("2026-10-13T18:15:30Z"), ZoneOffset.UTC), 1000);
     }
 
+    // --8<-- [start:home-trash]
     @Test
     void movesToTheHomeTrashWithInfo() throws IOException {
         Path file = Files.writeString(dir.resolve("my report.odt"), "r");
@@ -46,6 +47,7 @@ class TrashServiceTest {
         assertTrue(Files.readString(trashDir.resolve("info/my report.odt.trashinfo")).contains("my%20report.odt"));
         assertEquals(trashDir.resolve("files"), trash.homeTrashFiles());
     }
+    // --8<-- [end:home-trash]
 
     @Test
     void numbersDuplicateNames() throws IOException {

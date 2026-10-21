@@ -227,6 +227,7 @@ public class TrashService {
         return count;
     }
 
+    // --8<-- [start:trash]
     /** @return the path of the file inside the trash */
     public Path trash(Path path) {
         Path file = path.toAbsolutePath().normalize();
@@ -269,6 +270,7 @@ public class TrashService {
             throw new FileOperationException("Cannot move " + file + " to the trash: " + e.getMessage(), e);
         }
     }
+    // --8<-- [end:trash]
 
     /** {@code report.odt} → {@code report.2.odt}, as GLib names duplicates. */
     static String numbered(String name, int n) {
@@ -277,10 +279,12 @@ public class TrashService {
         return name.substring(0, dot) + "." + n + name.substring(dot);
     }
 
+    // --8<-- [start:trash-info]
     private String trashInfo(String path) {
         return "[Trash Info]\nPath=" + encodePath(path) + "\nDeletionDate="
                 + DELETION_DATE.format(LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS)) + "\n";
     }
+    // --8<-- [end:trash-info]
 
     /** URI escaping (RFC 2396) of the UTF-8 bytes, keeping {@code /}. */
     static String encodePath(String path) {
