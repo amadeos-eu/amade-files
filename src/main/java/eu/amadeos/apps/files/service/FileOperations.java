@@ -356,6 +356,7 @@ public class FileOperations {
             }
         }
 
+        // --8<-- [start:copy-content]
         private void copyContent(Path source, Path destination, BasicFileAttributes attributes) {
             Path temp = destination.resolveSibling(".amade-files-" + HexFormat.of().formatHex(randomBytes()) + ".part");
             try {
@@ -392,6 +393,7 @@ public class FileOperations {
                 throw e;
             }
         }
+        // --8<-- [end:copy-content]
 
         private byte[] randomBytes() {
             byte[] bytes = new byte[6];
@@ -481,6 +483,7 @@ public class FileOperations {
 
         // ---- reporting --------------------------------------------------------------------------
 
+        // --8<-- [start:report]
         void checkCancelled() {
             if (listener.isCancelled()) throw new OperationCancelledException();
         }
@@ -492,5 +495,6 @@ public class FileOperations {
             lastReport = now;
             listener.progress(new Progress(bytesDone, bytesTotal, filesDone, filesTotal, current));
         }
+        // --8<-- [end:report]
     }
 }

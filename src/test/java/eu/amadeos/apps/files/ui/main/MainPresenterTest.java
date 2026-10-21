@@ -150,6 +150,7 @@ class MainPresenterTest {
         assertTrue(view.questions.isEmpty());
     }
 
+    // --8<-- [start:conflict-all]
     @Test
     void conflictAnswerForAllIsAskedOnce() throws IOException {
         Files.writeString(other.resolve("a.txt"), "old a");
@@ -166,6 +167,7 @@ class MainPresenterTest {
         assertEquals("bb", Files.readString(other.resolve("b.txt")));
         assertFalse(Files.exists(home.resolve("a.txt")));
     }
+    // --8<-- [end:conflict-all]
 
     @Test
     void cancelledTargetQuestionDoesNothing() {

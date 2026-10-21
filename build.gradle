@@ -47,8 +47,10 @@ jar {
             'Main-Class': mainClassName,
             'Implementation-Title': 'amade-files',
             'Implementation-Version': project.version,
+            // --8<-- [start:native-access]
             // LaunchFeedback (amade-commons) talks to the X server through the foreign function API.
             'Enable-Native-Access': 'ALL-UNNAMED'
+            // --8<-- [end:native-access]
         )
     }
     from {
