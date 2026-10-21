@@ -224,6 +224,7 @@ public final class FilePanel extends JPanel {
         if (max > 0) c.setMaxWidth(max);
     }
 
+    // --8<-- [start:keys]
     private void installKeys() {
         InputMap keys = table.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
         ActionMap actions = table.getActionMap();
@@ -249,6 +250,7 @@ public final class FilePanel extends JPanel {
             keys.put(key, "none");
         }
     }
+    // --8<-- [end:keys]
 
     /** {@code action == null} binds the key to an action registered before. */
     private static void bind(InputMap keys, ActionMap actions, KeyStroke key, String name, Runnable action) {
