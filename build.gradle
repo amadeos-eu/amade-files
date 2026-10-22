@@ -96,6 +96,12 @@ exec /usr/bin/java -jar /opt/amade-files/amade-files.jar "\$@"
             from 'packaging/amade-files.desktop'
             into appDir
         }
+        // AppStream metadata: name, description and screenshot for amadeOS Software (and a repository's
+        // appstream-generator).
+        copy {
+            from 'packaging/eu.amadeos.apps.files.metainfo.xml'
+            into new File(stagingDir, "usr/share/metainfo")
+        }
         copy {
             from 'src/main/resources/icons/amade-files.png'
             into iconDir
