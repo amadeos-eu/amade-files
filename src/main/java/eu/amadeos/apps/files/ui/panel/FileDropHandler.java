@@ -109,6 +109,7 @@ abstract class FileDropHandler extends TransferHandler {
         });
     }
 
+    // --8<-- [start:mode]
     static DropMode mode(TransferSupport support) {
         if (localDrag) {
             if ((dragModifiers & InputEvent.CTRL_DOWN_MASK) != 0) return DropMode.COPY;
@@ -117,6 +118,7 @@ abstract class FileDropHandler extends TransferHandler {
         }
         return support.isDrop() && support.getUserDropAction() == COPY ? DropMode.COPY : DropMode.AUTO;
     }
+    // --8<-- [end:mode]
 
     // ---- export -------------------------------------------------------------------------------
 
@@ -133,6 +135,7 @@ abstract class FileDropHandler extends TransferHandler {
 
     // ---- import -------------------------------------------------------------------------------
 
+    // --8<-- [start:can-import]
     @Override
     public boolean canImport(TransferSupport support) {
         if (!support.isDrop() || listener == null || !FileTransfer.mayHoldFiles(support.getDataFlavors())) return false;
@@ -153,6 +156,7 @@ abstract class FileDropHandler extends TransferHandler {
         }
         return true;
     }
+    // --8<-- [end:can-import]
 
     @Override
     public boolean importData(TransferSupport support) {
