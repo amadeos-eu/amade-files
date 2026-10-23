@@ -67,6 +67,7 @@ public final class FolderTree extends JPanel {
     private Path pendingReveal;
     private boolean revealing;
 
+    // --8<-- [start:lazy-node]
     /** One folder in the tree. */
     private static final class FolderNode extends DefaultMutableTreeNode {
         final Path path;
@@ -83,6 +84,7 @@ public final class FolderTree extends JPanel {
             else loaded = true;
         }
     }
+    // --8<-- [end:lazy-node]
 
     public FolderTree() {
         super(new BorderLayout());
@@ -222,6 +224,7 @@ public final class FolderTree extends JPanel {
         if (pendingReveal != null) reveal(pendingReveal);
     }
 
+    // --8<-- [start:update]
     private void update(FolderNode node, List<Path> folders) {
         Map<Path, FolderNode> existing = new HashMap<>();
         for (int i = 0; i < node.getChildCount(); i++) {
@@ -244,6 +247,7 @@ public final class FolderTree extends JPanel {
             }
         }
     }
+    // --8<-- [end:update]
 
     /** Reads every folder again that was read before, for Refresh, Show Hidden Files and after changes. */
     public void refresh() {

@@ -32,6 +32,7 @@ public final class FileTransfer {
     private static final String GNOME_NATIVE = "x-special/gnome-copied-files";
     static final DataFlavor GNOME_COPIED_FILES = flavor(GNOME_NATIVE + ";class=java.io.InputStream");
 
+    // --8<-- [start:flavor-map]
     static {
         // Without this AWT would offer the flavour under an encoded name that no other program asks for.
         FlavorMap map = SystemFlavorMap.getDefaultFlavorMap();
@@ -40,6 +41,7 @@ public final class FileTransfer {
             system.addFlavorForUnencodedNative(GNOME_NATIVE, GNOME_COPIED_FILES);
         }
     }
+    // --8<-- [end:flavor-map]
 
     private FileTransfer() {
     }

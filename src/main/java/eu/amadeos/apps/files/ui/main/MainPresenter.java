@@ -595,6 +595,7 @@ public final class MainPresenter {
         }, summary -> "Emptied the trash: deleted " + Formats.count(summary.done(), "file") + ".");
     }
 
+    // --8<-- [start:targets]
     /**
      * The folder chosen in the tree while the tree has the focus; otherwise the marked lines, or the
      * line under the cursor; never the parent entry.
@@ -606,6 +607,7 @@ public final class MainPresenter {
         if (!marked.isEmpty()) return marked;
         return panel.current != null && !panel.current.isParent() ? List.of(panel.current) : List.of();
     }
+    // --8<-- [end:targets]
 
     /** The folder chosen in the tree while the tree has the focus, otherwise the line under the cursor. */
     private FileEntry focused() {
@@ -847,6 +849,7 @@ public final class MainPresenter {
         if (dir != null) pasteInto(dir);
     }
 
+    // --8<-- [start:paste]
     public void pasteInto(Path dir) {
         ClipboardFiles files = view.filesOnClipboard();
         if (files == null || files.paths().isEmpty()) {
@@ -862,9 +865,11 @@ public final class MainPresenter {
             if (files.cut()) edt.execute(() -> view.putFilesOnClipboard(new ClipboardFiles(List.of(), false)));
         });
     }
+    // --8<-- [end:paste]
 
     // ---- drag and drop --------------------------------------------------------------------------
 
+    // --8<-- [start:drop]
     /** Files dropped on a folder: moved or copied, or trashed when dropped on the trash. */
     public void drop(List<Path> sources, Path target, DropMode mode) {
         if (sources.isEmpty() || target == null || describeDrop(sources, target, mode) == null) return;
@@ -906,6 +911,7 @@ public final class MainPresenter {
     private boolean dropMoves(List<Path> sources, Path target, DropMode mode) {
         return mode == DropMode.MOVE || mode == DropMode.AUTO && fileSystem.sameFileSystem(sources.getFirst(), target);
     }
+    // --8<-- [end:drop]
 
     // ---- folder tree ----------------------------------------------------------------------------
 

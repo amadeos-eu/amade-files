@@ -466,6 +466,7 @@ class MainPresenterTest {
         assertEquals("There are no files on the clipboard.", view.message);
     }
 
+    // --8<-- [start:drop-test]
     @Test
     void droppingMovesOnTheSameFileSystemCopiesWithCtrlAndTrashesOnTheTrash() {
         presenter.start(List.of());
@@ -490,6 +491,7 @@ class MainPresenterTest {
         assertFalse(Files.exists(b));
         assertTrue(Files.exists(trash.homeTrashFiles().resolve("b.txt")));
     }
+    // --8<-- [end:drop-test]
 
     // ---- test doubles ---------------------------------------------------------------------------
 
