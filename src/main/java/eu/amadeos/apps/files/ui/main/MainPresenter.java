@@ -257,6 +257,8 @@ public final class MainPresenter {
         async(() -> {
             // The trash shows everything that is in it, with where it came from; no parent line.
             boolean inTrash = trash.isTrashFiles(folder);
+            // A fresh user has no trash yet; the tree and the path bar open it like Go → Trash does.
+            if (trash.isHomeTrashFiles(folder)) trash.ensureHomeTrash();
             List<FileEntry> entries = fileSystem.list(folder, showHidden || inTrash);
             if (inTrash) {
                 entries = entries.stream().filter(e -> !e.isParent()).map(e -> e.withTrash(trash.info(e.path()))).toList();
