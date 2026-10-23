@@ -396,6 +396,29 @@ class MainPresenterTest {
     }
 
     @Test
+    void theTrashInTheTreeOpensTheTrashEvenBeforeItExists() {
+        startTreeView();
+        Path files = view.places.get(1).path();
+        assertFalse(Files.exists(files), "a fresh user has no trash yet");
+
+        presenter.folderSelected(files);
+        assertEquals(trash.homeTrashFiles(), view.dirs.get(Side.LEFT));
+        assertEquals(Boolean.TRUE, view.trashViews.get(Side.LEFT));
+        assertTrue(Files.isDirectory(trash.homeTrashFiles().resolveSibling("info")), "created on first use");
+        assertEquals(List.of(), names(Side.LEFT));
+    }
+
+    @Test
+    void droppingOnTheTrashTrashesEvenBeforeItExists() {
+        startTreeView();
+        Path files = view.places.get(1).path();
+        assertEquals("Move to Trash", presenter.describeDrop(List.of(home.resolve("a.txt")), files, DropMode.AUTO));
+        presenter.drop(List.of(home.resolve("a.txt")), files, DropMode.AUTO);
+        assertTrue(Files.exists(trash.homeTrashFiles().resolve("a.txt")));
+        assertFalse(Files.exists(home.resolve("a.txt")));
+    }
+
+    @Test
     void commandsWorkOnTheFolderChosenInTheTreeWhileTheTreeHasTheFocus() {
         startTreeView();
         presenter.folderSelected(home.resolve("Docs"));

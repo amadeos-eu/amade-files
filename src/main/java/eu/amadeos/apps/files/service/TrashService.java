@@ -65,6 +65,11 @@ public class TrashService {
         return homeTrash.resolve("files");
     }
 
+    /** True for the {@code files} folder of the home trash, whether it exists yet or not. */
+    public boolean isHomeTrashFiles(Path dir) {
+        return dir.toAbsolutePath().normalize().equals(homeTrashFiles().toAbsolutePath().normalize());
+    }
+
     /** Creates the home trash if needed and returns its {@code files} folder. */
     public Path ensureHomeTrash() {
         try {
@@ -80,10 +85,12 @@ public class TrashService {
     /**
      * True for the {@code files} folder of a trash: the home trash, or {@code .Trash-$uid} and
      * {@code .Trash/$uid} on another file system. Such a folder is shown as the trash, with the origin
-     * of each file and with Restore and Empty Trash.
+     * of each file and with Restore and Empty Trash. The home trash counts before it exists, as a fresh
+     * user has none until the first file is trashed.
      */
     public boolean isTrashFiles(Path dir) {
         Path files = dir.toAbsolutePath().normalize();
+        if (isHomeTrashFiles(files)) return true;
         Path root = files.getParent();
         if (root == null || !"files".equals(String.valueOf(files.getFileName()))
                 || !Files.isDirectory(root.resolve("info"))) {
