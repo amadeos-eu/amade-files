@@ -1,6 +1,7 @@
 package eu.amadeos.apps.files.ui.panel;
 
 import eu.amadeos.apps.files.domain.FileEntry;
+import eu.amadeos.apps.files.domain.Place;
 
 import javax.swing.*;
 import java.awt.*;
@@ -18,6 +19,10 @@ final class FileIcons {
     private static final Icon FILE_LINK = new Painted((g, link) -> page(g, new Color(0xF4F4EE)), true);
     private static final Icon PROGRAM = new Painted((g, link) -> program(g), false);
     private static final Icon OTHER = new Painted((g, link) -> page(g, new Color(0xB8B8B8)), false);
+    private static final Icon HOME = new Painted((g, link) -> home(g), false);
+    private static final Icon TRASH = new Painted((g, link) -> trash(g), false);
+    private static final Icon DISK = new Painted((g, link) -> disk(g), false);
+    private static final Icon MEDIA = new Painted((g, link) -> media(g), false);
 
     private FileIcons() {
     }
@@ -28,6 +33,20 @@ final class FileIcons {
             case DIRECTORY -> entry.symlink() ? FOLDER_LINK : FOLDER;
             case FILE -> entry.executable() ? PROGRAM : entry.symlink() ? FILE_LINK : FILE;
             case OTHER -> OTHER;
+        };
+    }
+
+    /** The folder icon for folders of the tree. */
+    static Icon folder() {
+        return FOLDER;
+    }
+
+    static Icon of(Place.Kind kind) {
+        return switch (kind) {
+            case HOME -> HOME;
+            case TRASH -> TRASH;
+            case ROOT -> DISK;
+            case MEDIA -> MEDIA;
         };
     }
 
@@ -99,6 +118,47 @@ final class FileIcons {
         g.drawLine(4, 8, 6, 10);
         g.drawLine(6, 10, 4, 12);
         g.drawLine(8, 12, 11, 12);
+    }
+
+    private static void home(Graphics2D g) {
+        g.setColor(new Color(0xE8D8B0));
+        g.fillRect(3, 7, 10, 8);
+        g.setColor(new Color(0xB04A3A));
+        g.fillPolygon(new int[]{1, 8, 15}, new int[]{8, 1, 8}, 3);
+        g.setColor(new Color(0x404040));
+        g.drawRect(3, 7, 10, 8);
+        g.drawPolygon(new int[]{1, 8, 15}, new int[]{8, 1, 8}, 3);
+        g.setColor(new Color(0x6B5320));
+        g.fillRect(7, 10, 3, 5);
+    }
+
+    private static void trash(Graphics2D g) {
+        g.setColor(new Color(0xC8CCD0));
+        g.fillPolygon(new int[]{3, 13, 12, 4}, new int[]{4, 4, 15, 15}, 4);
+        g.setColor(new Color(0x404040));
+        g.drawPolygon(new int[]{3, 13, 12, 4}, new int[]{4, 4, 15, 15}, 4);
+        g.drawLine(2, 3, 14, 3);
+        g.drawLine(6, 1, 10, 1);
+        for (int x = 6; x <= 10; x += 2) g.drawLine(x, 6, x, 13);
+    }
+
+    private static void disk(Graphics2D g) {
+        g.setColor(new Color(0xB8BCC4));
+        g.fillRect(1, 5, 14, 7);
+        g.setColor(new Color(0x404040));
+        g.drawRect(1, 5, 14, 7);
+        g.setColor(new Color(0x2E7D32));
+        g.fillRect(11, 9, 2, 2);
+    }
+
+    private static void media(Graphics2D g) {
+        g.setColor(new Color(0x3A5E8C));
+        g.fillRect(1, 4, 10, 8);
+        g.setColor(new Color(0xD0D0D0));
+        g.fillRect(11, 6, 4, 4);
+        g.setColor(new Color(0x404040));
+        g.drawRect(1, 4, 10, 8);
+        g.drawRect(11, 6, 4, 4);
     }
 
     private static void linkArrow(Graphics2D g) {

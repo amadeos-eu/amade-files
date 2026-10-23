@@ -1,19 +1,69 @@
 # amade-files
 
-**amade-files** is the File Manager of the [amadeOS](https://github.com/datazuul/amadeos) desktop: a
-two-panel file manager in Java Swing with the look of the CDE desktop and the keyboard of the
-orthodox file managers (Midnight Commander, Total Commander, gnome-commander).
+**amade-files** is the File Manager of the [amadeOS](https://github.com/datazuul/amadeos) desktop, in
+Java Swing with the look of the CDE desktop. It has two views: a **folder tree** next to the contents
+of the chosen folder, worked with the mouse (context menus, drag and drop), and **two panels** side by
+side with the function-key bar and the keyboard of the orthodox file managers (Midnight Commander,
+Total Commander, gnome-commander).
+
+![The tree view](docs/screenshots/amade-files.png)
 
 ![License](https://img.shields.io/badge/license-EUPL--1.2-blue)
 ![Java](https://img.shields.io/badge/Java-25-orange)
 ![Debian](https://img.shields.io/badge/Debian-package-red)
 
-> Status: early development (0.1.0). Browsing, copy, move, rename, new folder, trash (with restore
-> and empty) and permanent delete work; see *Roadmap*.
+> Status: early development (0.1.0). Browsing in both views, copy, move, rename, new folder, cut and
+> paste, drag and drop, trash (with restore and empty) and permanent delete work; see *Roadmap*.
 
 ---
 
 ## Window layout
+
+*View → Tree* (Ctrl+1) and *View → Two Panels* (Ctrl+2) switch between the views; the choice is kept.
+The tree view is the default.
+
+### Tree view
+
+```
+┌ File Manager - /home/ralf/Dokumente ──────────────────────────────────┐
+│ File  Edit  View  Go                                             Help │
+├───────────────────────────────────────────────────────────────────────┤
+│ [/] [home] [ralf] [Dokumente]                                         │  ← path bar
+├──────────────────┬────────────────────────────────────────────────────┤
+│ ▾ Home (ralf)    │ Name ▲            Size    Modified      Permissions│
+│   ▸ Bilder       │ Briefe            <DIR>   20.10. 09:12  rwxr-xr-x  │
+│   ▾ Dokumente    │ Projekte          <DIR>   22.10. 17:40  rwxr-xr-x  │
+│     ▸ Briefe     │ brief.odt         24 KB   12.10. 16:02  rw-r--r--  │
+│     ▸ Projekte   │ notizen.txt       3 KB    23.10. 12:30  rw-r--r--  │
+│   Trash          │                                                    │
+│ ▸ File System    │                                                    │
+│ ▸ USB-STICK      │                                                    │
+├──────────────────┴─────────────────┬──────────────────────────────────┤
+│ 2 of 11 selected, 27 KB · 18 GB free │ Copied 2 items. Paste with Ctrl+V. │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+- **Folder tree** with Home, the Trash, the File System and every mounted medium below `/media`,
+  `/run/media` and `/mnt` (USB sticks appear and disappear within a few seconds). Folders are read
+  when they are opened for the first time, so a slow network share never blocks the window. The
+  tree follows the folder shown on the right.
+- **Contents** of the chosen folder, without a `..` line. Selection works as in other graphical file
+  managers: a click selects one line, Ctrl+click adds or removes, Shift+click selects a range. The
+  keys of the two-panel view (Insert, F2 to F8, …) work here too.
+- **Context menus** (right mouse button) on files, on the free space and on folders in the tree:
+  Open, Open in Two Panels, View, Edit, Cut, Copy, Paste, Rename, Move to Trash, Delete Permanently,
+  New Folder, Copy Path; in the trash Restore and Empty Trash. While the tree has the keyboard focus,
+  F2, Delete, Ctrl+X/C/V and the menus work on the folder chosen in it. Home, Trash, File System and
+  media cannot be moved, renamed or deleted.
+- **Drag and drop** onto a folder in the tree or in the list: without a key files are *moved* on the
+  same file system and *copied* onto another one (as in Windows Explorer); Ctrl copies, Shift moves,
+  Escape cancels. A note next to the mouse says what will happen. Dropping on the Trash moves to the
+  trash. A closed folder in the tree opens when the mouse rests on it. Files can be dragged to and
+  from other programs (`text/uri-list`).
+- The function-key bar is hidden; the window's status line shows the selection on the left and
+  messages on the right.
+
+### Two-panel view
 
 ```
 ┌ File Manager - /home/ralf/Dokumente ──────────────────────────────────┐
@@ -32,10 +82,14 @@ orthodox file managers (Midnight Commander, Total Commander, gnome-commander).
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Two panels** side by side; *View → Two Panels* (Ctrl+F1) switches to a single panel. The active
-  panel has the active title colours in its path bar.
+- **Two panels** side by side; *View → Show Second Panel* (Ctrl+F1) switches to a single panel. The
+  active panel has the active title colours in its path bar.
 - **Iconic path** as in the CDE File Manager (dtfile): one button per folder; long paths collapse
-  into "…" so the current folder stays visible.
+  into "…" so the current folder stays visible. A click on its free space, or Ctrl+L, turns it into
+  a text field with the path selected: type a path (`~` and relative paths work, a file opens its
+  folder with the file under the cursor), Tab completes folder names, Enter goes there, Escape goes
+  back. Its context menu has *Copy Path* (of the folder under the mouse) and *Edit Path* (both views).
+- Context menus and drag and drop work in this view too, also between the two panels.
 - **Marking is separate from the cursor**: Insert or Space marks the line and moves down, arrow keys
   keep the marks. Marked lines are bold and red. Ctrl+click and Shift+click mark with the mouse.
 - **Status line per panel**: the file under the cursor or the marked files with their size, and the
@@ -46,7 +100,8 @@ orthodox file managers (Midnight Commander, Total Commander, gnome-commander).
 |---|---|
 | Enter, double-click | Open folder, or open file with its default application |
 | Backspace | Parent folder |
-| Tab | Other panel |
+| Ctrl+1 / Ctrl+2 | Tree view / two panels |
+| Tab | Other panel; in the tree view between tree and contents |
 | Insert, Space | Mark line and move down |
 | F2, Shift+F6 | Rename |
 | F3 / F4 | View (default application) / edit in the Text Editor (amade-pad) |
@@ -55,7 +110,8 @@ orthodox file managers (Midnight Commander, Total Commander, gnome-commander).
 | F8, Delete | Move to trash (in the trash: delete permanently, asks first) |
 | Shift+F8, Shift+Delete | Delete permanently (asks first) |
 | Ctrl+H | Show hidden files |
-| Ctrl+L | Go to folder (`~` and relative paths work) |
+| Ctrl+L | Type a path in the path bar (`~` and relative paths work, Tab completes) |
+| Ctrl+X / Ctrl+C / Ctrl+V | Cut / copy / paste files (also with other file managers) |
 | Ctrl+U / Ctrl+= | Swap panels / same folder in the other panel |
 | Ctrl+A, Ctrl+Shift+A, Ctrl+I | Select all, deselect all, invert selection |
 | Ctrl+Shift+C | Copy paths to the clipboard |
@@ -76,6 +132,14 @@ orthodox file managers (Midnight Commander, Total Commander, gnome-commander).
 - **Symbolic links** are copied and deleted as links, never followed.
 - Copying a folder into itself is refused; copying into the same folder makes a numbered copy.
 - Devices, pipes and sockets are skipped.
+
+## Clipboard
+
+Cut and Copy put the files on the clipboard as `text/uri-list`, as `x-special/gnome-copied-files`
+(which tells other file managers Cut from Copy) and as plain paths for text fields and terminals.
+Paste reads the same formats, so files can be copied between amade-files and Nautilus, Caja, Thunar
+or PCManFM. Pasting cut files moves them once; pasting copied files into their own folder makes a
+numbered copy.
 
 ## Trash
 
@@ -113,7 +177,8 @@ the foreign function API; the jar manifest grants native access).
 ## Configuration
 
 `~/.config/amadeos/files/files.conf` (or `$XDG_CONFIG_HOME/amadeos/files/`), readable only by the user:
-hidden files, one or two panels, and the folders of both panels when the File Manager was closed.
+hidden files, tree or two-panel view, one or two panels, and the folders of both panels when the File
+Manager was closed.
 
 ## Architecture
 
@@ -124,11 +189,11 @@ theme chosen in the Style Manager immediately.
 
 | Package | Content |
 |---|---|
-| `domain` | `FileEntry`, `TrashInfo`, `SortOrder`, `SortKey`, `Side`, `FilePreferences`, `Resolution`, `Progress` |
+| `domain` | `FileEntry`, `TrashInfo`, `SortOrder`, `SortKey`, `Side`, `FilePreferences`, `ViewMode`, `Place`, `ClipboardFiles`, `DropMode`, `Resolution`, `Progress` |
 | `repository` | `PreferencesRepository` (`files.conf`) |
-| `service` | `FileSystemService` (list, new folder, rename), `FileOperations` (copy, move, delete with progress and conflicts), `TrashService` (freedesktop trash: trash, info, restore, empty), `Opener` (default application, Text Editor), `Formats` |
-| `ui.main` | `MainWindow`, `MainMenuBar`, `MainPresenter` (all behaviour, testable without Swing windows) |
-| `ui.panel`, `ui.dialogs` | file panel with iconic path, conflict and progress dialogs |
+| `service` | `FileSystemService` (list, sub-folders and places for the tree, new folder, rename), `FileUris` (clipboard and drag formats), `PathCompletion`, `FileOperations` (copy, move, delete with progress and conflicts), `TrashService` (freedesktop trash: trash, info, restore, empty), `Opener` (default application, Text Editor), `Formats` |
+| `ui.main` | `MainWindow`, `MainMenuBar`, `ContextMenus`, `DropHint`, `MainPresenter` (all behaviour, testable without Swing windows) |
+| `ui.panel`, `ui.dialogs` | file panel with iconic path, `FolderTree`, `FileTransfer` and `FileDropHandler` (clipboard, drag and drop), conflict and progress dialogs |
 
 Folders are read and operations run on virtual threads; results come back to the EDT. A listing that
 arrives after the user moved on is dropped. Only one copy, move or delete runs at a time.
@@ -160,8 +225,10 @@ so the amadeOS front panel lists it in the File Manager drawer.
 - [ ] Watch folders for changes (refresh automatically)
 - [ ] Quick search by typing; filter (`*.jpg`)
 - [ ] Tabs per panel; bookmarks; history (Alt+Left/Right)
-- [ ] Icon view and folder tree; file type icons from the icon theme (NsCDE)
-- [ ] Drag and drop between panels, onto the desktop and the Front Panel
+- [x] Folder tree view (default) with context menus, drag and drop, cut/copy/paste; editable path bar
+- [ ] Icon view; file type icons from the icon theme (NsCDE)
+- [x] Drag and drop between panels, the tree and other programs
+- [ ] Drag and drop onto the desktop and the Front Panel
 - [ ] Properties (permissions, owner), Open With…, find files, compare folders
 - [ ] Archives as folders; remote folders (SFTP)
 

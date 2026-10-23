@@ -1,13 +1,17 @@
 package eu.amadeos.apps.files.ui.main;
 
 import eu.amadeos.commons.config.XdgDirectories;
+import eu.amadeos.apps.files.domain.ClipboardFiles;
+import eu.amadeos.apps.files.domain.DropMode;
 import eu.amadeos.apps.files.domain.FileEntry;
 import eu.amadeos.apps.files.domain.FilePreferences;
+import eu.amadeos.apps.files.domain.Place;
 import eu.amadeos.apps.files.domain.Progress;
 import eu.amadeos.apps.files.domain.Resolution;
 import eu.amadeos.apps.files.domain.Side;
 import eu.amadeos.apps.files.domain.SortKey;
 import eu.amadeos.apps.files.domain.SortOrder;
+import eu.amadeos.apps.files.domain.ViewMode;
 import eu.amadeos.apps.files.repository.PreferencesRepository;
 import eu.amadeos.apps.files.service.FileOperations;
 import eu.amadeos.apps.files.service.FileSystemService;
@@ -24,6 +28,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.AbstractExecutorService;
@@ -42,6 +47,7 @@ class MainPresenterTest {
 
     private Path home;
     private Path other;
+    private static final FilePreferences PANELS = FilePreferences.DEFAULTS.withViewMode(ViewMode.PANELS);
     private final FakeView view = new FakeView();
     private final PreferencesRepository preferences = mock(PreferencesRepository.class);
     private final Opener opener = mock(Opener.class);
@@ -56,7 +62,8 @@ class MainPresenterTest {
         Files.writeString(home.resolve("a.txt"), "a");
         Files.createDirectory(home.resolve("Docs"));
         Files.writeString(home.resolve(".hidden"), "h");
-        when(preferences.load()).thenReturn(FilePreferences.DEFAULTS.withDirs(home, other));
+        // The two-panel view, unless a test switches; the tree view tests start from DEFAULTS.
+        when(preferences.load()).thenReturn(PANELS.withDirs(home, other));
         trash = new TrashService(new XdgDirectories(
                 Map.of("XDG_DATA_HOME", dir.resolve("data").toString()), home.toString()));
         presenter = new MainPresenter(view, new FileSystemService(), new FileOperations(), trash, opener,
@@ -325,8 +332,7 @@ class MainPresenterTest {
         assertEquals(Side.RIGHT, view.active);
         presenter.goHome();
         assertEquals(home, view.dirs.get(Side.RIGHT));
-        view.answers.add("Docs");
-        presenter.goTo();
+        presenter.goTo(Side.RIGHT, "Docs");
         assertEquals(home.resolve("Docs"), view.dirs.get(Side.RIGHT));
     }
 
@@ -344,8 +350,145 @@ class MainPresenterTest {
         presenter.start(List.of());
         presenter.navigate(Side.RIGHT, home.resolve("Docs"));
         presenter.exit();
-        verify(preferences).save(FilePreferences.DEFAULTS.withDirs(home, home.resolve("Docs")));
+        verify(preferences).save(PANELS.withDirs(home, home.resolve("Docs")));
         assertTrue(view.disposed);
+    }
+
+    // ---- path bar -------------------------------------------------------------------------------
+
+    @Test
+    void typedPathsGoToFoldersAndToTheFolderOfAFile() {
+        presenter.start(List.of());
+        presenter.goTo(Side.LEFT, "~/Docs");
+        assertEquals(home.resolve("Docs"), view.dirs.get(Side.LEFT));
+        presenter.goTo(Side.LEFT, "../b.txt");
+        assertEquals(home, view.dirs.get(Side.LEFT));
+        assertEquals("b.txt", view.focus.get(Side.LEFT));
+        assertEquals("Docs/", presenter.completePath(Side.LEFT, "Do"));
+
+        presenter.copyPath(home.resolve("Docs"));
+        assertEquals(home.resolve("Docs").toString(), view.clipboardText);
+    }
+
+    // ---- tree view ------------------------------------------------------------------------------
+
+    private void startTreeView() {
+        when(preferences.load()).thenReturn(FilePreferences.DEFAULTS.withDirs(home, other));
+        presenter.start(List.of());
+    }
+
+    @Test
+    void theTreeViewIsTheDefaultAndShowsNoParentLine() {
+        startTreeView();
+        assertEquals(ViewMode.TREE, view.viewMode);
+        assertEquals(List.of("Docs", "a.txt", "b.txt"), names(Side.LEFT));
+        assertEquals(home, view.places.get(0).path());
+        assertEquals(Place.Kind.TRASH, view.places.get(1).kind());
+
+        presenter.expandFolder(home);
+        assertEquals(List.of(home.resolve("Docs")), view.folders.get(home));
+
+        presenter.setViewMode(ViewMode.PANELS);
+        assertEquals(ViewMode.PANELS, view.viewMode);
+        assertEquals(List.of("..", "Docs", "a.txt", "b.txt"), names(Side.LEFT));
+        presenter.exit();
+        verify(preferences).save(PANELS.withDirs(home, other));
+    }
+
+    @Test
+    void commandsWorkOnTheFolderChosenInTheTreeWhileTheTreeHasTheFocus() {
+        startTreeView();
+        presenter.folderSelected(home.resolve("Docs"));
+        assertEquals(home.resolve("Docs"), view.dirs.get(Side.LEFT));
+
+        view.answers.add("Papers");
+        presenter.rename();
+        assertEquals("New name for Docs:", view.questions.getLast());
+        assertTrue(Files.isDirectory(home.resolve("Papers")));
+        assertEquals(home.resolve("Papers"), view.dirs.get(Side.LEFT), "the contents side follows the new name");
+
+        presenter.moveToTrash();
+        assertFalse(Files.exists(home.resolve("Papers")));
+        assertEquals(home, view.dirs.get(Side.LEFT), "the nearest existing folder is shown");
+
+        // Back in the contents, the commands work on its lines again.
+        presenter.panelActivated(Side.LEFT);
+        cursor(Side.LEFT, "a.txt");
+        presenter.moveToTrash();
+        assertFalse(Files.exists(home.resolve("a.txt")));
+    }
+
+    @Test
+    void placesStayWhereTheyAre() {
+        startTreeView();
+        presenter.folderSelected(home);
+        presenter.moveToTrash();
+        presenter.rename();
+        assertTrue(Files.isDirectory(home));
+        assertEquals("Home cannot be moved, renamed or deleted.", view.message);
+        assertNull(presenter.describeDrop(List.of(home), other, DropMode.MOVE));
+    }
+
+    @Test
+    void openInTwoPanelsSwitchesTheView() {
+        startTreeView();
+        presenter.openInPanels(home.resolve("Docs"));
+        assertEquals(ViewMode.PANELS, view.viewMode);
+        assertEquals(home.resolve("Docs"), view.dirs.get(Side.LEFT));
+        assertEquals("..", names(Side.LEFT).getFirst());
+    }
+
+    // ---- clipboard and drag and drop ------------------------------------------------------------
+
+    @Test
+    void cutAndPasteMovesOnceCopyAndPasteCopies() throws IOException {
+        presenter.start(List.of());
+        cursor(Side.LEFT, "a.txt");
+        presenter.cutFiles();
+        assertEquals(new ClipboardFiles(List.of(home.resolve("a.txt")), true), view.clipboard);
+        presenter.panelActivated(Side.RIGHT);
+        presenter.paste();
+        assertTrue(Files.exists(other.resolve("a.txt")));
+        assertFalse(Files.exists(home.resolve("a.txt")));
+        assertEquals(List.of(), view.clipboard.paths(), "cut files are pasted once");
+
+        presenter.panelActivated(Side.LEFT);
+        cursor(Side.LEFT, "b.txt");
+        presenter.copyFiles();
+        presenter.pasteInto(home.resolve("Docs"));
+        assertEquals("bb", Files.readString(home.resolve("Docs/b.txt")));
+        presenter.paste();
+        assertTrue(Files.exists(home.resolve("b (2).txt")), "pasting into the same folder makes a copy beside it");
+        assertTrue(Files.exists(home.resolve("b.txt")));
+
+        view.clipboard = null;
+        presenter.paste();
+        assertEquals("There are no files on the clipboard.", view.message);
+    }
+
+    @Test
+    void droppingMovesOnTheSameFileSystemCopiesWithCtrlAndTrashesOnTheTrash() {
+        presenter.start(List.of());
+        Path a = home.resolve("a.txt");
+        Path b = home.resolve("b.txt");
+        Path docs = home.resolve("Docs");
+        assertEquals("Move to \"Docs\"", presenter.describeDrop(List.of(a), docs, DropMode.AUTO));
+        assertEquals("Copy to \"Docs\"", presenter.describeDrop(List.of(a), docs, DropMode.COPY));
+        assertNull(presenter.describeDrop(List.of(a), home, DropMode.AUTO), "back where it is");
+        assertNull(presenter.describeDrop(List.of(docs), docs.resolve("x"), DropMode.COPY), "into itself");
+        assertEquals("Move to Trash", presenter.describeDrop(List.of(a), trash.ensureHomeTrash(), DropMode.AUTO));
+
+        presenter.drop(List.of(a), docs, DropMode.AUTO);
+        assertTrue(Files.exists(docs.resolve("a.txt")));
+        assertFalse(Files.exists(a));
+
+        presenter.drop(List.of(b), other, DropMode.COPY);
+        assertTrue(Files.exists(other.resolve("b.txt")));
+        assertTrue(Files.exists(b));
+
+        presenter.drop(List.of(b), trash.homeTrashFiles(), DropMode.AUTO);
+        assertFalse(Files.exists(b));
+        assertTrue(Files.exists(trash.homeTrashFiles().resolve("b.txt")));
     }
 
     // ---- test doubles ---------------------------------------------------------------------------
@@ -360,6 +503,11 @@ class MainPresenterTest {
         final Deque<Boolean> confirmations = new ArrayDeque<>();
         final Deque<ConflictChoice> conflicts = new ArrayDeque<>();
         final List<String> questions = new ArrayList<>();
+        final Map<Path, List<Path>> folders = new HashMap<>();
+        List<Place> places = List.of();
+        ClipboardFiles clipboard;
+        String clipboardText;
+        ViewMode viewMode;
         Side active;
         boolean twoPanels;
         String message;
@@ -444,6 +592,36 @@ class MainPresenterTest {
 
         @Override
         public void copyToClipboard(String text) {
+            clipboardText = text;
+        }
+
+        @Override
+        public void putFilesOnClipboard(ClipboardFiles files) {
+            clipboard = files;
+        }
+
+        @Override
+        public ClipboardFiles filesOnClipboard() {
+            return clipboard;
+        }
+
+        @Override
+        public void setViewMode(ViewMode mode) {
+            viewMode = mode;
+        }
+
+        @Override
+        public void setPlaces(List<Place> list) {
+            places = list;
+        }
+
+        @Override
+        public void showFolders(Path dir, List<Path> list) {
+            folders.put(dir, list);
+        }
+
+        @Override
+        public void refreshFolders() {
         }
 
         @Override

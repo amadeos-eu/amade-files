@@ -81,14 +81,19 @@ final class FileTableModel extends AbstractTableModel {
                 else marked.remove(entry.path());
             }
         }
-        fireTableDataChanged();
+        repaintAll();
     }
 
     void invertMarks() {
         for (FileEntry entry : entries) {
             if (!entry.isParent() && !marked.remove(entry.path())) marked.add(entry.path());
         }
-        fireTableDataChanged();
+        repaintAll();
+    }
+
+    /** Not {@code fireTableDataChanged}: that would also clear the cursor (the table selection). */
+    private void repaintAll() {
+        if (!entries.isEmpty()) fireTableRowsUpdated(0, entries.size() - 1);
     }
 
     List<FileEntry> markedEntries() {

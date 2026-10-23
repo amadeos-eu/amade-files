@@ -4,6 +4,7 @@ import com.google.inject.Inject;
 import eu.amadeos.commons.config.AppDirectories;
 import eu.amadeos.commons.config.PropertiesFile;
 import eu.amadeos.apps.files.domain.FilePreferences;
+import eu.amadeos.apps.files.domain.ViewMode;
 
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -32,6 +33,7 @@ public class PreferencesRepository {
         return new FilePreferences(
                 Boolean.parseBoolean(p.getProperty("view.showHidden", Boolean.toString(d.showHidden()))),
                 Boolean.parseBoolean(p.getProperty("view.twoPanels", Boolean.toString(d.twoPanels()))),
+                "panels".equals(p.getProperty("view.mode")) ? ViewMode.PANELS : ViewMode.TREE,
                 path(p.getProperty("panel.left.dir")),
                 path(p.getProperty("panel.right.dir")));
     }
@@ -40,6 +42,7 @@ public class PreferencesRepository {
         Properties p = new Properties();
         p.setProperty("view.showHidden", Boolean.toString(preferences.showHidden()));
         p.setProperty("view.twoPanels", Boolean.toString(preferences.twoPanels()));
+        p.setProperty("view.mode", preferences.viewMode() == ViewMode.PANELS ? "panels" : "tree");
         if (preferences.leftDir() != null) p.setProperty("panel.left.dir", preferences.leftDir().toString());
         if (preferences.rightDir() != null) p.setProperty("panel.right.dir", preferences.rightDir().toString());
         PropertiesFile.store(file, p, "amade-files preferences");
