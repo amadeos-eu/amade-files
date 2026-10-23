@@ -1,13 +1,20 @@
 package eu.amadeos.apps.files.ui.main;
 
 import eu.amadeos.commons.swing.EdtExecutor;
+import eu.amadeos.apps.files.domain.ClipboardFiles;
+import eu.amadeos.apps.files.domain.DropMode;
 import eu.amadeos.apps.files.domain.FileEntry;
+import eu.amadeos.apps.files.domain.Place;
 import eu.amadeos.apps.files.domain.Side;
 import eu.amadeos.apps.files.domain.SortKey;
 import eu.amadeos.apps.files.domain.SortOrder;
+import eu.amadeos.apps.files.domain.ViewMode;
 import eu.amadeos.apps.files.ui.dialogs.ConflictDialog;
 import eu.amadeos.apps.files.ui.dialogs.ProgressDialog;
+import eu.amadeos.apps.files.ui.panel.FileDropListener;
 import eu.amadeos.apps.files.ui.panel.FilePanel;
+import eu.amadeos.apps.files.ui.panel.FileTransfer;
+import eu.amadeos.apps.files.ui.panel.FolderTree;
 
 import javax.swing.*;
 import javax.swing.border.BevelBorder;
@@ -27,19 +34,32 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The File Manager window: two panels side by side (or one), a status line and the function-key bar.
+ * The File Manager window, in one of two views: the folder tree with the contents of the chosen folder
+ * (functions in the menus, the context menus and by drag and drop), or two panels side by side (or
+ * one) with the function-key bar. Both have a status line.
  */
 public final class MainWindow extends JFrame implements MainView {
+    /** Every few seconds the tree looks for USB sticks and other media that came or went. */
+    private static final int PLACES_POLL_MS = 3000;
+
     private final Map<Side, FilePanel> panels = new EnumMap<>(Side.class);
     private final Map<Side, Path> dirs = new EnumMap<>(Side.class);
     private final Map<Side, Boolean> trashViews = new EnumMap<>(Side.class);
     private final JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+    private final JSplitPane treeSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+    private final FolderTree tree = new FolderTree();
     private final JPanel center = new JPanel(new BorderLayout());
+    private final JPanel top = new JPanel(new BorderLayout());
     private final JLabel status = new JLabel(" ");
+    private final JPanel statusBar = new JPanel(new BorderLayout());
+    private final JPanel statusRow = new JPanel(new GridLayout(1, 0, 2, 0));
     private final JPanel functionKeys = new JPanel(new GridLayout(1, 0, 4, 0));
+    private final DropHint dropHint = new DropHint();
+    private final ContextMenus menus = new ContextMenus(this);
     private MainPresenter presenter;
     private MainMenuBar menuBar;
     private boolean twoPanels = true;
+    private ViewMode viewMode = ViewMode.TREE;
     private Side active = Side.LEFT;
 
     public MainWindow() {
@@ -53,23 +73,29 @@ public final class MainWindow extends JFrame implements MainView {
         split.setResizeWeight(0.5);
         split.setContinuousLayout(true);
         split.setBorder(BorderFactory.createEmptyBorder());
+        treeSplit.setResizeWeight(0.25);
+        treeSplit.setContinuousLayout(true);
+        treeSplit.setBorder(BorderFactory.createEmptyBorder());
+        tree.setPreferredSize(new Dimension(260, 400));
         center.setBorder(BorderFactory.createEmptyBorder(4, 4, 2, 4));
-        layoutPanels();
+        top.setBorder(BorderFactory.createEmptyBorder(4, 6, 0, 6));
 
         status.setFont(status.getFont().deriveFont(Font.PLAIN, 11f));
-        JPanel statusBar = new JPanel(new BorderLayout());
         statusBar.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createBevelBorder(BevelBorder.LOWERED),
                 BorderFactory.createEmptyBorder(1, 6, 1, 6)));
         statusBar.add(status, BorderLayout.CENTER);
         functionKeys.setBorder(BorderFactory.createEmptyBorder(3, 4, 4, 4));
         JPanel south = new JPanel(new BorderLayout());
-        south.add(statusBar, BorderLayout.NORTH);
+        south.add(statusRow, BorderLayout.NORTH);
         south.add(functionKeys, BorderLayout.SOUTH);
+        layoutPanels();
 
         JPanel content = new JPanel(new BorderLayout());
+        content.add(top, BorderLayout.NORTH);
         content.add(center, BorderLayout.CENTER);
         content.add(south, BorderLayout.SOUTH);
         setContentPane(content);
+        getLayeredPane().add(dropHint, JLayeredPane.DRAG_LAYER);
         setPreferredSize(new Dimension(1100, 720));
         pack();
         setLocationRelativeTo(null);
@@ -80,7 +106,17 @@ public final class MainWindow extends JFrame implements MainView {
         this.presenter = presenter;
         menuBar = new MainMenuBar(presenter, this);
         setJMenuBar(menuBar);
-        for (Side side : Side.values()) panels.get(side).setListener(listener(side));
+        menus.bind(presenter);
+        for (Side side : Side.values()) {
+            panels.get(side).setListener(listener(side));
+            panels.get(side).setDropListener(dropListener());
+        }
+        tree.setListener(treeListener());
+        tree.setDropListener(dropListener());
+        Timer places = new Timer(PLACES_POLL_MS, e -> {
+            if (isShowing() && viewMode == ViewMode.TREE) presenter.refreshPlaces();
+        });
+        places.start();
 
         functionKey("F2 Rename", presenter::rename);
         functionKey("F3 View", presenter::view);
@@ -147,7 +183,83 @@ public final class MainWindow extends JFrame implements MainView {
 
             @Override
             public void switchPanel() {
-                if (twoPanels) panels.get(side.other()).focusList();
+                if (viewMode == ViewMode.TREE) tree.focusTree();
+                else if (twoPanels) panels.get(side.other()).focusList();
+            }
+
+            @Override
+            public void popup(FileEntry entry, Component component, int x, int y) {
+                JPopupMenu menu = entry == null || entry.isParent()
+                        ? menus.folderSpace(dirs.get(side), Boolean.TRUE.equals(trashViews.get(side)))
+                        : menus.line(side, entry, Boolean.TRUE.equals(trashViews.get(side)));
+                menu.show(component, x, y);
+            }
+
+            @Override
+            public void typedPath(String text) {
+                presenter.goTo(side, text);
+            }
+
+            @Override
+            public void copyPath(Path path) {
+                presenter.copyPath(path);
+            }
+
+            @Override
+            public String completePath(String text) {
+                return presenter.completePath(side, text);
+            }
+        };
+    }
+
+    private FolderTree.Listener treeListener() {
+        return new FolderTree.Listener() {
+            @Override
+            public void folderSelected(Path dir) {
+                presenter.folderSelected(dir);
+            }
+
+            @Override
+            public void focused(Path dir) {
+                presenter.treeFocused(dir);
+            }
+
+            @Override
+            public void expand(Path dir) {
+                presenter.expandFolder(dir);
+            }
+
+            @Override
+            public void popup(Path dir, Place place, Component component, int x, int y) {
+                menus.treeFolder(dir, place).show(component, x, y);
+            }
+
+            @Override
+            public void switchToContents() {
+                panels.get(Side.LEFT).focusList();
+            }
+        };
+    }
+
+    private FileDropListener dropListener() {
+        return new FileDropListener() {
+            @Override
+            public String describeDrop(List<Path> sources, Path target, DropMode mode) {
+                return presenter.describeDrop(sources, target, mode);
+            }
+
+            @Override
+            public void drop(List<Path> sources, Path target, DropMode mode) {
+                presenter.drop(sources, target, mode);
+            }
+
+            @Override
+            public void dropHint(Component component, Point point, String text) {
+                if (component == null || text == null) {
+                    dropHint.setVisible(false);
+                    return;
+                }
+                dropHint.show(SwingUtilities.convertPoint(component, point, getLayeredPane()), text, getLayeredPane().getSize());
             }
         };
     }
@@ -173,18 +285,55 @@ public final class MainWindow extends JFrame implements MainView {
 
     private void layoutPanels() {
         center.removeAll();
-        if (twoPanels) {
+        top.removeAll();
+        statusRow.removeAll();
+        FilePanel left = panels.get(Side.LEFT);
+        left.setExplorer(viewMode == ViewMode.TREE);
+        functionKeys.setVisible(viewMode == ViewMode.PANELS);
+        if (viewMode == ViewMode.TREE) {
+            // The path bar spans the window; the contents side's status line sits next to the messages.
+            split.setLeftComponent(null);
+            split.setRightComponent(null);
+            top.add(left.pathBar(), BorderLayout.CENTER);
+            treeSplit.setLeftComponent(tree);
+            treeSplit.setRightComponent(left);
+            center.add(treeSplit, BorderLayout.CENTER);
+            statusRow.add(left.statusBar());
+            statusRow.add(statusBar);
+            SwingUtilities.invokeLater(() -> treeSplit.setDividerLocation(Math.max(200, getWidth() / 4)));
+        } else if (twoPanels) {
+            treeSplit.setRightComponent(null);
             split.setLeftComponent(panels.get(Side.LEFT));
             split.setRightComponent(panels.get(Side.RIGHT));
             center.add(split, BorderLayout.CENTER);
             SwingUtilities.invokeLater(() -> split.setDividerLocation(0.5));
         } else {
+            treeSplit.setRightComponent(null);
             split.setLeftComponent(null);
             split.setRightComponent(null);
-            center.add(panels.get(Side.LEFT), BorderLayout.CENTER);
+            center.add(left, BorderLayout.CENTER);
         }
-        center.revalidate();
-        center.repaint();
+        if (viewMode == ViewMode.PANELS) statusRow.add(statusBar);
+        Container content = getContentPane();
+        content.revalidate();
+        content.repaint();
+    }
+
+    /** Ctrl+L: the path bar of the active panel as text. */
+    void editPath() {
+        panels.get(active).editPath();
+    }
+
+    boolean isShowingHidden() {
+        return menuBar != null && menuBar.isShowingHidden();
+    }
+
+    boolean isTreeView() {
+        return viewMode == ViewMode.TREE;
+    }
+
+    ClipboardFiles clipboardFiles() {
+        return FileTransfer.readClipboard(Toolkit.getDefaultToolkit().getSystemClipboard());
     }
 
     private void updateTitle() {
@@ -209,6 +358,7 @@ public final class MainWindow extends JFrame implements MainView {
     public void showDirectory(Side side, Path dir, List<FileEntry> entries, SortOrder sort, String focusName) {
         dirs.put(side, dir);
         panels.get(side).show(dir, entries, sort, focusName);
+        if (side == Side.LEFT && viewMode == ViewMode.TREE) tree.reveal(dir);
         if (side == active) updateTitle();
     }
 
@@ -243,6 +393,32 @@ public final class MainWindow extends JFrame implements MainView {
         layoutPanels();
         if (menuBar != null) menuBar.setTwoPanels(value);
         panels.get(active).focusList();
+    }
+
+    @Override
+    public void setViewMode(ViewMode mode) {
+        if (menuBar != null) menuBar.setViewMode(mode);
+        if (viewMode == mode) return;
+        viewMode = mode;
+        layoutPanels();
+        Path left = dirs.get(Side.LEFT);
+        if (mode == ViewMode.TREE && left != null) tree.reveal(left);
+        panels.get(active).focusList();
+    }
+
+    @Override
+    public void setPlaces(List<Place> places) {
+        tree.setPlaces(places);
+    }
+
+    @Override
+    public void showFolders(Path dir, List<Path> folders) {
+        tree.showFolders(dir, folders);
+    }
+
+    @Override
+    public void refreshFolders() {
+        tree.refresh();
     }
 
     @Override
@@ -305,6 +481,17 @@ public final class MainWindow extends JFrame implements MainView {
     @Override
     public ProgressView showProgress(String title, Runnable cancel) {
         return new ProgressDialog(this, title, cancel);
+    }
+
+    @Override
+    public void putFilesOnClipboard(ClipboardFiles files) {
+        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
+                files.paths().isEmpty() ? new StringSelection("") : FileTransfer.of(files), null);
+    }
+
+    @Override
+    public ClipboardFiles filesOnClipboard() {
+        return clipboardFiles();
     }
 
     @Override

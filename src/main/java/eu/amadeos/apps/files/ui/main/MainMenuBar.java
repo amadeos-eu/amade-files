@@ -1,6 +1,7 @@
 package eu.amadeos.apps.files.ui.main;
 
 import eu.amadeos.apps.files.domain.SortKey;
+import eu.amadeos.apps.files.domain.ViewMode;
 
 import javax.swing.*;
 import java.awt.event.InputEvent;
@@ -11,7 +12,9 @@ import java.awt.event.KeyEvent;
  * Total Commander): F3 view, F4 edit, F5 copy, F6 move, F7 new folder, F8 delete.
  */
 final class MainMenuBar extends JMenuBar {
-    private final JCheckBoxMenuItem twoPanels = new JCheckBoxMenuItem("Two Panels");
+    private final JRadioButtonMenuItem treeView = new JRadioButtonMenuItem("Tree");
+    private final JRadioButtonMenuItem panelsView = new JRadioButtonMenuItem("Two Panels");
+    private final JCheckBoxMenuItem twoPanels = new JCheckBoxMenuItem("Show Second Panel");
     private final JCheckBoxMenuItem showHidden = new JCheckBoxMenuItem("Show Hidden Files");
 
     MainMenuBar(MainPresenter presenter, MainWindow window) {
@@ -40,12 +43,25 @@ final class MainMenuBar extends JMenuBar {
         add(file);
 
         JMenu edit = menu("Edit", KeyEvent.VK_E);
+        edit.add(item("Cut", key(KeyEvent.VK_X, ctrl), presenter::cutFiles));
+        edit.add(item("Copy", key(KeyEvent.VK_C, ctrl), presenter::copyFiles));
+        edit.add(item("Paste", key(KeyEvent.VK_V, ctrl), presenter::paste));
+        edit.addSeparator();
         edit.add(item("Select All", key(KeyEvent.VK_A, ctrl), () -> window.markAll(true)));
         edit.add(item("Deselect All", key(KeyEvent.VK_A, ctrl | shift), () -> window.markAll(false)));
         edit.add(item("Invert Selection", key(KeyEvent.VK_I, ctrl), window::invertMarks));
         add(edit);
 
         JMenu view = menu("View", KeyEvent.VK_V);
+        ButtonGroup modes = new ButtonGroup();
+        modes.add(treeView);
+        modes.add(panelsView);
+        treeView.setAccelerator(key(KeyEvent.VK_1, ctrl));
+        treeView.addActionListener(e -> presenter.setViewMode(ViewMode.TREE));
+        panelsView.setAccelerator(key(KeyEvent.VK_2, ctrl));
+        panelsView.addActionListener(e -> presenter.setViewMode(ViewMode.PANELS));
+        view.add(treeView);
+        view.add(panelsView);
         twoPanels.setAccelerator(key(KeyEvent.VK_F1, ctrl));
         twoPanels.addActionListener(e -> presenter.setTwoPanels(twoPanels.isSelected()));
         view.add(twoPanels);
@@ -64,7 +80,7 @@ final class MainMenuBar extends JMenuBar {
         go.add(item("Up", key(KeyEvent.VK_UP, alt), () -> presenter.up(presenter.activeSide())));
         go.add(item("Home Folder", key(KeyEvent.VK_HOME, alt), presenter::goHome));
         go.add(item("Trash", null, presenter::goTrash));
-        go.add(item("Go To Folder…", key(KeyEvent.VK_L, ctrl), presenter::goTo));
+        go.add(item("Go To Folder…", key(KeyEvent.VK_L, ctrl), window::editPath));
         go.addSeparator();
         go.add(item("Same Folder in Other Panel", key(KeyEvent.VK_EQUALS, ctrl), presenter::sameFolderInOtherPanel));
         go.add(item("Swap Panels", key(KeyEvent.VK_U, ctrl), presenter::swapPanels));
@@ -81,6 +97,17 @@ final class MainMenuBar extends JMenuBar {
         twoPanels.setSelected(value);
     }
 
+    void setViewMode(ViewMode mode) {
+        treeView.setSelected(mode == ViewMode.TREE);
+        panelsView.setSelected(mode == ViewMode.PANELS);
+        // One or two panels is a choice of the two-panel view.
+        twoPanels.setEnabled(mode == ViewMode.PANELS);
+    }
+
+    boolean isShowingHidden() {
+        return showHidden.isSelected();
+    }
+
     void setShowHidden(boolean value) {
         showHidden.setSelected(value);
     }
@@ -88,9 +115,11 @@ final class MainMenuBar extends JMenuBar {
     private static void showKeys(MainWindow window) {
         String text = """
                 <html><table cellpadding=2>
+                <tr><td><b>Ctrl+1 / Ctrl+2</b></td><td>Tree view / two panels</td></tr>
                 <tr><td><b>Enter</b></td><td>Open folder or file</td></tr>
                 <tr><td><b>Backspace</b></td><td>Parent folder</td></tr>
-                <tr><td><b>Tab</b></td><td>Other panel</td></tr>
+                <tr><td><b>Tab</b></td><td>Other panel; in the tree view between tree and contents</td></tr>
+                <tr><td><b>Ctrl+X / Ctrl+C / Ctrl+V</b></td><td>Cut / copy / paste files</td></tr>
                 <tr><td><b>Insert, Space</b></td><td>Select line and move down</td></tr>
                 <tr><td><b>Ctrl+Click, Shift+Click</b></td><td>Select line, select range</td></tr>
                 <tr><td><b>F2</b></td><td>Rename</td></tr>
@@ -100,10 +129,10 @@ final class MainMenuBar extends JMenuBar {
                 <tr><td><b>F8, Delete</b></td><td>Move to trash</td></tr>
                 <tr><td><b>Shift+F8, Shift+Delete</b></td><td>Delete permanently (in the trash also F8)</td></tr>
                 <tr><td><b>Ctrl+H</b></td><td>Show hidden files</td></tr>
-                <tr><td><b>Ctrl+L</b></td><td>Go to folder</td></tr>
+                <tr><td><b>Ctrl+L</b></td><td>Type a path in the path bar (Tab completes)</td></tr>
                 <tr><td><b>Ctrl+U</b></td><td>Swap panels</td></tr>
                 <tr><td><b>Ctrl+=</b></td><td>Same folder in the other panel</td></tr>
-                <tr><td><b>Ctrl+F1</b></td><td>One or two panels</td></tr>
+                <tr><td><b>Ctrl+F1</b></td><td>One or two panels (two-panel view)</td></tr>
                 <tr><td><b>F10, Ctrl+Q</b></td><td>Quit</td></tr>
                 </table></html>""";
         // As a label: JOptionPane would split a String message at each line break and show the HTML as text.
@@ -113,7 +142,7 @@ final class MainMenuBar extends JMenuBar {
     private static void showAbout(MainWindow window) {
         String version = MainMenuBar.class.getPackage().getImplementationVersion();
         JOptionPane.showMessageDialog(window, "amadeOS File Manager" + (version != null ? " " + version : "")
-                        + "\nTwo-panel file manager for the amadeOS desktop.\n\nLicensed under the EUPL-1.2.",
+                        + "\nFile manager with folder tree and two panels for the amadeOS desktop.\n\nLicensed under the EUPL-1.2.",
                 "File Manager - About", JOptionPane.INFORMATION_MESSAGE);
     }
 

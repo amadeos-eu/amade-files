@@ -86,4 +86,38 @@ class FileSystemServiceTest {
     void reportsFreeSpace() {
         assertTrue(service.freeSpace(dir) > 0);
     }
+
+    @Test
+    void foldersForTheTreeAreSortedAndIncludeLinksToFolders() throws IOException {
+        Files.createDirectory(dir.resolve("beta"));
+        Files.createDirectory(dir.resolve("Alpha"));
+        Files.createDirectory(dir.resolve(".config"));
+        Files.writeString(dir.resolve("file.txt"), "x");
+        Files.createSymbolicLink(dir.resolve("gamma"), dir.resolve("beta"));
+        assertEquals(List.of(dir.resolve("Alpha"), dir.resolve("beta"), dir.resolve("gamma")), service.folders(dir, false));
+        assertEquals(dir.resolve(".config"), service.folders(dir, true).getFirst());
+    }
+
+    @Test
+    void placesStartWithHomeTrashAndTheFileSystem() {
+        List<eu.amadeos.apps.files.domain.Place> places = service.places(dir, dir.resolve("trash/files"));
+        assertEquals(dir, places.get(0).path());
+        assertEquals(eu.amadeos.apps.files.domain.Place.Kind.TRASH, places.get(1).kind());
+        assertEquals(Path.of("/"), places.get(2).path());
+    }
+
+    @Test
+    void mediaMountsComeFromTheMountTable() {
+        List<String> lines = List.of(
+                "/dev/sda2 / ext4 rw,relatime 0 0",
+                "tmpfs /run tmpfs rw 0 0",
+                "/dev/sdb1 /media/ralf/USB-STICK vfat rw 0 0",
+                "/dev/sr0 /media/ralf/Urlaub\\0402026 iso9660 ro 0 0",
+                "/dev/sdc1 /run/media/ralf/Backup ext4 rw 0 0",
+                "/dev/sdd1 /mnt ext4 rw 0 0",
+                "/dev/sdd2 /mnt/data ext4 rw 0 0",
+                "/dev/sdb1 /media/ralf/USB-STICK vfat rw 0 0");
+        assertEquals(List.of(Path.of("/media/ralf/USB-STICK"), Path.of("/media/ralf/Urlaub 2026"),
+                Path.of("/run/media/ralf/Backup"), Path.of("/mnt/data")), FileSystemService.mediaMounts(lines));
+    }
 }

@@ -2,6 +2,7 @@ package eu.amadeos.apps.files.service;
 
 import eu.amadeos.apps.files.domain.FileEntry;
 import eu.amadeos.apps.files.domain.FileEntry.Kind;
+import eu.amadeos.apps.files.domain.Place;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,7 +19,9 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.text.Collator;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -26,6 +29,9 @@ import java.util.List;
  */
 public class FileSystemService {
     private static final Logger LOG = LoggerFactory.getLogger(FileSystemService.class);
+    private static final Path MOUNTS = Path.of("/proc/self/mounts");
+    /** Where removable media and other mounted file systems of the user appear. */
+    private static final List<Path> MEDIA_FOLDERS = List.of(Path.of("/media"), Path.of("/run/media"), Path.of("/mnt"));
 
     /**
      * The entries of a folder, unsorted, starting with {@code ..} unless it is the root.
@@ -51,6 +57,84 @@ public class FileSystemService {
             throw new FileOperationException("Cannot read " + folder + ": " + e.getMessage(), e);
         }
         return entries;
+    }
+
+    /**
+     * The sub-folders of a folder for the folder tree, sorted by name; links to folders count as folders.
+     *
+     * @throws FileOperationException if the folder cannot be read
+     */
+    public List<Path> folders(Path dir, boolean showHidden) {
+        Collator collator = Collator.getInstance();
+        collator.setStrength(Collator.SECONDARY);
+        return list(dir, showHidden).stream()
+                .filter(e -> e.kind() == Kind.DIRECTORY)
+                .sorted(Comparator.comparing(FileEntry::name, collator::compare))
+                .map(FileEntry::path)
+                .toList();
+    }
+
+    /**
+     * The top level of the folder tree: home, trash, the file system and the mounted media below
+     * {@code /media}, {@code /run/media} and {@code /mnt}.
+     */
+    public List<Place> places(Path home, Path trashFiles) {
+        List<Place> places = new ArrayList<>();
+        places.add(new Place("Home", home, Place.Kind.HOME));
+        places.add(new Place("Trash", trashFiles, Place.Kind.TRASH));
+        places.add(new Place("File System", Path.of("/"), Place.Kind.ROOT));
+        List<String> lines = List.of();
+        try {
+            if (Files.isReadable(MOUNTS)) lines = Files.readAllLines(MOUNTS);
+        } catch (IOException e) {
+            LOG.debug("Cannot read {}", MOUNTS, e);
+        }
+        for (Path mount : mediaMounts(lines)) {
+            places.add(new Place(String.valueOf(mount.getFileName()), mount, Place.Kind.MEDIA));
+        }
+        return places;
+    }
+
+    /** Mount points below the media folders, from lines of {@code /proc/self/mounts}, in their order. */
+    static List<Path> mediaMounts(List<String> mountLines) {
+        List<Path> mounts = new ArrayList<>();
+        for (String line : mountLines) {
+            String[] fields = line.split(" ");
+            if (fields.length < 2) continue;
+            Path mount;
+            try {
+                mount = Path.of(unescapeMount(fields[1]));
+            } catch (java.nio.file.InvalidPathException e) {
+                continue;
+            }
+            boolean media = MEDIA_FOLDERS.stream().anyMatch(m -> mount.startsWith(m) && !mount.equals(m));
+            if (media && !mounts.contains(mount)) mounts.add(mount);
+        }
+        return mounts;
+    }
+
+    /** {@code /proc/self/mounts} writes space, tab, newline and backslash as octal escapes ({@code \040}). */
+    static String unescapeMount(String field) {
+        StringBuilder out = new StringBuilder(field.length());
+        for (int i = 0; i < field.length(); i++) {
+            char c = field.charAt(i);
+            if (c == '\\' && i + 3 < field.length() && field.substring(i + 1, i + 4).chars().allMatch(d -> d >= '0' && d <= '7')) {
+                out.append((char) Integer.parseInt(field.substring(i + 1, i + 4), 8));
+                i += 3;
+            } else {
+                out.append(c);
+            }
+        }
+        return out.toString();
+    }
+
+    /** True if moving from {@code source} into {@code targetDir} is a rename, not a copy. */
+    public boolean sameFileSystem(Path source, Path targetDir) {
+        try {
+            return Files.getFileStore(source).equals(Files.getFileStore(targetDir));
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /** Attributes of one file; a symbolic link gets the kind and size of its target. */

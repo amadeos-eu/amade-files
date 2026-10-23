@@ -12,11 +12,11 @@
   <name xml:lang="es">Gestor de archivos de amadeOS</name>
   <name xml:lang="it">Gestore di file di amadeOS</name>
 
-  <summary>Manage files in two panels, in the style of the CDE desktop</summary>
-  <summary xml:lang="de">Dateien in zwei Feldern verwalten, im Stil des CDE-Desktops</summary>
-  <summary xml:lang="fr">Gérer les fichiers dans deux panneaux, dans le style du bureau CDE</summary>
-  <summary xml:lang="es">Gestionar archivos en dos paneles, con el estilo del escritorio CDE</summary>
-  <summary xml:lang="it">Gestire i file in due pannelli, nello stile del desktop CDE</summary>
+  <summary>Manage files in a folder tree or in two panels, in the style of the CDE desktop</summary>
+  <summary xml:lang="de">Dateien im Ordnerbaum oder in zwei Feldern verwalten, im Stil des CDE-Desktops</summary>
+  <summary xml:lang="fr">Gérer les fichiers dans une arborescence ou dans deux panneaux, dans le style du bureau CDE</summary>
+  <summary xml:lang="es">Gestionar archivos en un árbol de carpetas o en dos paneles, con el estilo del escritorio CDE</summary>
+  <summary xml:lang="it">Gestire i file in un albero di cartelle o in due pannelli, nello stile del desktop CDE</summary>
 
   <description>
     <p>amade-files is the file manager of the amadeOS desktop. Two panels side by side, an iconic path with one button per folder and a function-key bar make copying and moving between folders quick, with the mouse or the keyboard.</p>
@@ -24,6 +24,11 @@
     <p xml:lang="fr">amade-files est le gestionnaire de fichiers du bureau amadeOS. Deux panneaux côte à côte, un chemin avec un bouton par dossier et une barre de touches de fonction rendent la copie et le déplacement entre dossiers rapides, à la souris ou au clavier.</p>
     <p xml:lang="es">amade-files es el gestor de archivos del escritorio amadeOS. Dos paneles uno al lado del otro, una ruta con un botón por carpeta y una barra de teclas de función hacen que copiar y mover entre carpetas sea rápido, con el ratón o el teclado.</p>
     <p xml:lang="it">amade-files è il gestore di file del desktop amadeOS. Due pannelli affiancati, un percorso con un pulsante per cartella e una barra dei tasti funzione rendono rapidi la copia e lo spostamento tra cartelle, con il mouse o la tastiera.</p>
+    <p>The folder tree view, the default, works with the mouse: context menus, drag and drop, cut, copy and paste.</p>
+    <p xml:lang="de">Die Baumansicht, die Standardansicht, wird mit der Maus bedient: Kontextmenüs, Ziehen und Ablegen, Ausschneiden, Kopieren und Einfügen.</p>
+    <p xml:lang="fr">La vue en arborescence, la vue par défaut, s’utilise à la souris : menus contextuels, glisser-déposer, couper, copier et coller.</p>
+    <p xml:lang="es">La vista de árbol, la vista predeterminada, se maneja con el ratón: menús contextuales, arrastrar y soltar, cortar, copiar y pegar.</p>
+    <p xml:lang="it">La vista ad albero, quella predefinita, si usa con il mouse: menu contestuali, trascinamento, taglia, copia e incolla.</p>
     <ul>
       <li>Copy, move, rename, new folder (F5, F6, F2, F7)</li>
       <li xml:lang="de">Kopieren, Verschieben, Umbenennen, neuer Ordner (F5, F6, F2, F7)</li>
@@ -63,11 +68,11 @@
 
   <screenshots>
     <screenshot type="default">
-      <caption>Home folder and pictures in two panels</caption>
-      <caption xml:lang="de">Persönlicher Ordner und Bilder in zwei Feldern</caption>
-      <caption xml:lang="fr">Dossier personnel et images dans deux panneaux</caption>
-      <caption xml:lang="es">Carpeta personal e imágenes en dos paneles</caption>
-      <caption xml:lang="it">Cartella personale e immagini in due pannelli</caption>
+      <caption>Documents in the folder tree view</caption>
+      <caption xml:lang="de">Dokumente in der Baumansicht</caption>
+      <caption xml:lang="fr">Documents dans la vue en arborescence</caption>
+      <caption xml:lang="es">Documentos en la vista de árbol</caption>
+      <caption xml:lang="it">Documenti nella vista ad albero</caption>
       <image>https://raw.githubusercontent.com/datazuul/amade-files/main/docs/screenshots/amade-files.png</image>
     </screenshot>
   </screenshots>

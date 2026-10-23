@@ -1,6 +1,7 @@
 package eu.amadeos.apps.files.repository;
 
 import eu.amadeos.apps.files.domain.FilePreferences;
+import eu.amadeos.apps.files.domain.ViewMode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -22,7 +23,7 @@ class PreferencesRepositoryTest {
     @Test
     void roundTrip() {
         PreferencesRepository repository = new PreferencesRepository(dir.resolve("files/files.conf"));
-        FilePreferences preferences = new FilePreferences(true, false, Path.of("/home/ralf"), Path.of("/media/usb"));
+        FilePreferences preferences = new FilePreferences(true, false, ViewMode.PANELS, Path.of("/home/ralf"), Path.of("/media/usb"));
         repository.save(preferences);
         assertEquals(preferences, repository.load());
     }
@@ -34,5 +35,6 @@ class PreferencesRepositoryTest {
         FilePreferences loaded = new PreferencesRepository(file).load();
         assertNull(loaded.leftDir());
         assertFalse(loaded.twoPanels());
+        assertEquals(ViewMode.TREE, loaded.viewMode(), "the tree is the default view");
     }
 }
