@@ -1,8 +1,10 @@
 name: Build
 
+# develop builds X.Y.Z-dev.N, release X.Y.Z-pre.N and main the release X.Y.Z, which the release job
+# tags and publishes with the package (see CONTRIBUTING.md of datazuul/amadeos, "Commits and versions").
 on:
   push:
-    branches: [main]
+    branches: [develop, release, main]
   pull_request:
 
 permissions:
@@ -11,8 +13,18 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      channel: ${{ steps.version.outputs.channel }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The version is computed from the history since the last release tag.
+          fetch-depth: 0
+      - id: version
+        uses: datazuul/amadeos-ci/version@main
+        with:
+          metainfo: packaging/eu.amadeos.apps.files.metainfo.xml
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -24,9 +36,50 @@ jobs:
       # The Swing integration tests skip themselves without a display, so run under Xvfb.
       - name: Test
         run: xvfb-run --auto-servernum ./gradlew test --no-daemon
+      - name: Package
+        run: ./gradlew jar deb --no-daemon -PappVersion=${{ steps.version.outputs.version }}
+      - name: Check the package version
+        run: |
+          deb=$(ls build/distributions/amade-files_*_all.deb)
+          test "$(dpkg-deb --field "$deb" Version)" = "${{ steps.version.outputs.deb-version }}"
+      - name: Upload the Debian package
+        uses: actions/upload-artifact@v7
+        with:
+          name: amade-files-deb
+          path: build/distributions/*.deb
+          if-no-files-found: error
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: test-reports
           path: build/reports/tests/test
+
+  # Only on main, after the release branch was promoted: tag vX.Y.Z and publish the GitHub Release.
+  release:
+    needs: test
+    if: needs.test.outputs.channel == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          name: amade-files-deb
+          path: dist
+      - uses: datazuul/amadeos-ci/release@main
+        with:
+          version: ${{ needs.test.outputs.version }}
+          files: dist/*.deb
+
+  commits:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: datazuul/amadeos-ci/check-commits@main

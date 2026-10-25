@@ -12,7 +12,7 @@ Total Commander, gnome-commander).
 ![Java](https://img.shields.io/badge/Java-25-orange)
 ![Debian](https://img.shields.io/badge/Debian-package-red)
 
-> Status: early development (0.1.0). Browsing in both views, copy, move, rename, new folder, cut and
+> Status: early development. Browsing in both views, copy, move, rename, new folder, cut and
 > paste, drag and drop, trash (with restore and empty) and permanent delete work; see *Roadmap*.
 
 ---
@@ -209,7 +209,7 @@ Requirements: Java 25 JDK; `dpkg-deb` for the Debian package.
 ./gradlew test                 # unit tests, no display needed
 ./gradlew run                  # start the File Manager
 ./gradlew run --args="/tmp /media"   # folders for the left and right panel
-./gradlew deb                  # build/distributions/amade-files_0.1.0_all.deb
+./gradlew deb                  # build/distributions/amade-files_0.0.0~dev.0_all.deb
 ./gradlew installToAmadeOs     # copy the .deb into ../amadeos/config/packages.chroot/
 ```
 
