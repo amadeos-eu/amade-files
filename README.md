@@ -1,6 +1,6 @@
 # amade-files
 
-**amade-files** is the File Manager of the [amadeOS](https://github.com/datazuul/amadeos) desktop, in
+**amade-files** is the File Manager of the [amadeOS](https://github.com/amadeos-eu/amadeos) desktop, in
 Java Swing with the look of the CDE desktop. It has two views: a **folder tree** next to the contents
 of the chosen folder, worked with the mouse (context menus, drag and drop), and **two panels** side by
 side with the function-key bar and the keyboard of the orthodox file managers (Midnight Commander,
@@ -182,9 +182,9 @@ Manager was closed.
 
 ## Architecture
 
-Java 25, Swing, Guice; same structure as [amade-mail](https://github.com/datazuul/amade-mail) and
-[amade-pad](https://github.com/datazuul/amade-pad). Theme, Motif look, start-up and XDG helpers come
-from [amade-commons](https://github.com/datazuul/amade-commons), so the File Manager follows the desktop
+Java 25, Swing, Guice; same structure as [amade-mail](https://github.com/amadeos-eu/amade-mail) and
+[amade-pad](https://github.com/amadeos-eu/amade-pad). Theme, Motif look, start-up and XDG helpers come
+from [amade-commons](https://github.com/amadeos-eu/amade-commons), so the File Manager follows the desktop
 theme chosen in the Style Manager immediately.
 
 | Package | Content |
