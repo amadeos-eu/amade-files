@@ -5,7 +5,7 @@ plugins {
 
 group = 'eu.amadeos'
 // CI computes the version from the Conventional Commits since the last release tag and passes it as
-// -PappVersion (datazuul/amadeos-ci scripts/next-version.sh); a build without it is a local development build.
+// -PappVersion (amadeos-eu/amadeos-ci scripts/next-version.sh); a build without it is a local development build.
 version = findProperty('appVersion') ?: '0.0.0-dev.0'
 // Debian sorts 1.1.0~dev.57 before 1.1.0 (with - it would sort after it).
 def debVersion = version.toString().replace('-', '~')
@@ -30,7 +30,7 @@ repositories {
 dependencies {
     // Theme, Motif look, start-up and XDG helpers shared by all amadeOS applications.
     // With ../amade-commons checked out, settings.gradle builds that checkout instead (composite build).
-    implementation 'com.github.datazuul:amade-commons:fac730fed3'
+    implementation 'com.github.amadeos-eu:amade-commons:fac730fed3'
 
     runtimeOnly 'ch.qos.logback:logback-classic:1.5.18'
 

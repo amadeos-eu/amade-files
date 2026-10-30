@@ -60,8 +60,8 @@
     <category>FileManager</category>
   </categories>
 
-  <url type="homepage">https://github.com/datazuul/amade-files</url>
-  <url type="bugtracker">https://github.com/datazuul/amade-files/issues</url>
+  <url type="homepage">https://github.com/amadeos-eu/amade-files</url>
+  <url type="bugtracker">https://github.com/amadeos-eu/amade-files/issues</url>
   <developer id="eu.amadeos">
     <name>amadeOS Project</name>
   </developer>
@@ -73,7 +73,7 @@
       <caption xml:lang="fr">Documents dans la vue en arborescence</caption>
       <caption xml:lang="es">Documentos en la vista de árbol</caption>
       <caption xml:lang="it">Documenti nella vista ad albero</caption>
-      <image>https://raw.githubusercontent.com/datazuul/amade-files/main/docs/screenshots/amade-files.png</image>
+      <image>https://raw.githubusercontent.com/amadeos-eu/amade-files/main/docs/screenshots/amade-files.png</image>
     </screenshot>
   </screenshots>
 
