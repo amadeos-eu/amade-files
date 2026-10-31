@@ -280,7 +280,6 @@ public final class FolderTree extends JPanel {
         for (Path folder : folders) wanted.add(existing.getOrDefault(folder, new FolderNode(folder, null)));
         arrange(node, wanted);
     }
-    // --8<-- [end:update]
 
     /** Makes {@code wanted} the children of {@code node}, in this order. */
     private void arrange(FolderNode node, List<FolderNode> wanted) {
@@ -299,6 +298,7 @@ public final class FolderTree extends JPanel {
             }
         }
     }
+    // --8<-- [end:update]
 
     /** Reads every folder again that was read before, for Refresh, Show Hidden Files and after changes. */
     public void refresh() {
