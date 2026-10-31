@@ -2,6 +2,7 @@ package eu.amadeos.apps.files.ui.main;
 
 import eu.amadeos.apps.files.domain.ClipboardFiles;
 import eu.amadeos.apps.files.domain.FileEntry;
+import eu.amadeos.apps.files.domain.NetworkAddress;
 import eu.amadeos.apps.files.domain.Place;
 import eu.amadeos.apps.files.domain.Side;
 import eu.amadeos.apps.files.domain.SortOrder;
@@ -9,6 +10,7 @@ import eu.amadeos.apps.files.domain.ViewMode;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 /**
  * What the presenter needs from the main window. All methods run on the EDT.
@@ -37,6 +39,21 @@ public interface MainView {
 
     /** The sub-folders of a folder in the tree, after it was asked for with {@code MainPresenter.expandFolder}. */
     void showFolders(Path dir, List<Path> folders);
+
+    /**
+     * The servers below Network, or the shares below a server, in the tree; {@code complete} is false while the
+     * shares of a server were not read yet.
+     */
+    void showPlaces(Path parent, List<Place> places, boolean complete);
+
+    /** Names for the folders of connected network shares, for the path bars and the title. */
+    void setFolderNames(Map<Path, String> names);
+
+    /** Asks for user, workgroup and password, or guest; null if cancelled. */
+    LoginChoice askLogin(LoginRequest request);
+
+    /** Connect to Server; null if cancelled. */
+    ConnectChoice askConnect(List<NetworkAddress> recent, NetworkAddress initial);
 
     /** Reads the folders of the tree again that were read before. */
     void refreshFolders();

@@ -21,6 +21,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 /**
  * One file panel: iconic path on top, the file list, and a status line with the selection and the
@@ -209,6 +210,11 @@ public final class FilePanel extends JPanel {
 
     public JComponent statusBar() {
         return statusBar;
+    }
+
+    /** Names for the folders of connected network shares in the path bar. */
+    public void setFolderNames(Map<Path, String> names) {
+        pathBar.setNames(names);
     }
 
     /** Ctrl+L: the path bar as text. */

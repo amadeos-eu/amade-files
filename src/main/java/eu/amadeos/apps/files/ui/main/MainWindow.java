@@ -4,6 +4,7 @@ import eu.amadeos.commons.swing.EdtExecutor;
 import eu.amadeos.apps.files.domain.ClipboardFiles;
 import eu.amadeos.apps.files.domain.DropMode;
 import eu.amadeos.apps.files.domain.FileEntry;
+import eu.amadeos.apps.files.domain.NetworkAddress;
 import eu.amadeos.apps.files.domain.Place;
 import eu.amadeos.apps.files.service.ArchiveService;
 import eu.amadeos.apps.files.domain.Side;
@@ -11,6 +12,8 @@ import eu.amadeos.apps.files.domain.SortKey;
 import eu.amadeos.apps.files.domain.SortOrder;
 import eu.amadeos.apps.files.domain.ViewMode;
 import eu.amadeos.apps.files.ui.dialogs.ConflictDialog;
+import eu.amadeos.apps.files.ui.dialogs.ConnectDialog;
+import eu.amadeos.apps.files.ui.dialogs.LoginDialog;
 import eu.amadeos.apps.files.ui.dialogs.ProgressDialog;
 import eu.amadeos.apps.files.ui.panel.FileDropListener;
 import eu.amadeos.apps.files.ui.panel.FilePanel;
@@ -48,6 +51,7 @@ public final class MainWindow extends JFrame implements MainView {
     private final Map<Side, FilePanel> panels = new EnumMap<>(Side.class);
     private final Map<Side, Path> dirs = new EnumMap<>(Side.class);
     private final Map<Side, Boolean> trashViews = new EnumMap<>(Side.class);
+    private Map<Path, String> folderNames = Map.of();
     private final JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
     private final JSplitPane treeSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
     private final FolderTree tree = new FolderTree();
@@ -342,7 +346,18 @@ public final class MainWindow extends JFrame implements MainView {
     private void updateTitle() {
         Path dir = dirs.get(active);
         if (Boolean.TRUE.equals(trashViews.get(active))) setTitle("File Manager - Trash");
-        else setTitle(dir == null ? "File Manager" : "File Manager - " + dir);
+        else setTitle(dir == null ? "File Manager" : "File Manager - " + displayName(dir));
+    }
+
+    /** A folder of a connected share as "MyCloudEX2Ultra › Public/Photos", others as their path. */
+    private String displayName(Path dir) {
+        Path best = null;
+        for (Path root : folderNames.keySet()) {
+            if (dir.startsWith(root) && (best == null || root.getNameCount() > best.getNameCount())) best = root;
+        }
+        if (best == null) return dir.toString();
+        String rest = best.relativize(dir).toString();
+        return folderNames.get(best) + (rest.isEmpty() ? "" : "/" + rest);
     }
 
     // ---- selection commands of the Edit menu ----------------------------------------------------
@@ -417,6 +432,29 @@ public final class MainWindow extends JFrame implements MainView {
     @Override
     public void showFolders(Path dir, List<Path> folders) {
         tree.showFolders(dir, folders);
+    }
+
+    @Override
+    public void showPlaces(Path parent, List<Place> places, boolean complete) {
+        tree.showPlaces(parent, places, complete);
+    }
+
+    @Override
+    public void setFolderNames(Map<Path, String> names) {
+        if (names.equals(folderNames)) return;
+        folderNames = Map.copyOf(names);
+        for (FilePanel panel : panels.values()) panel.setFolderNames(folderNames);
+        updateTitle();
+    }
+
+    @Override
+    public LoginChoice askLogin(LoginRequest request) {
+        return LoginDialog.ask(this, request);
+    }
+
+    @Override
+    public ConnectChoice askConnect(List<NetworkAddress> recent, NetworkAddress initial) {
+        return ConnectDialog.ask(this, recent, initial);
     }
 
     @Override

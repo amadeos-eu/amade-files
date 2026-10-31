@@ -30,6 +30,8 @@ import java.util.List;
 public class FileSystemService {
     private static final Logger LOG = LoggerFactory.getLogger(FileSystemService.class);
     private static final Path MOUNTS = Path.of("/proc/self/mounts");
+    /** Where gvfs shows connected network shares. */
+    private static final Path GVFS = NetworkService.defaultGvfsRoot();
     /** Where removable media and other mounted file systems of the user appear. */
     private static final List<Path> MEDIA_FOLDERS = List.of(Path.of("/media"), Path.of("/run/media"), Path.of("/mnt"));
 
@@ -163,7 +165,9 @@ public class FileSystemService {
         try {
             PosixFileAttributes posix = Files.readAttributes(path, PosixFileAttributes.class);
             permissions = PosixFilePermissions.toString(posix.permissions());
-            executable = kind == Kind.FILE && posix.permissions().contains(PosixFilePermission.OWNER_EXECUTE);
+            // gvfs shows every file of a network share as rwx------: there the bit says nothing.
+            executable = kind == Kind.FILE && posix.permissions().contains(PosixFilePermission.OWNER_EXECUTE)
+                    && !path.startsWith(GVFS);
         } catch (UnsupportedOperationException | IOException e) {
             // Not a POSIX file system (e.g. FAT on a USB stick): no permissions to show.
         }

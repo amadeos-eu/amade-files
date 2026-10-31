@@ -126,7 +126,7 @@ Section: utils
 Priority: optional
 Architecture: all
 Depends: openjdk-25-jre | java-runtime (>= 25)
-Recommends: xdg-utils, udisks2, eject
+Recommends: xdg-utils, udisks2, eject, gvfs-backends, gvfs-fuse, libsecret-tools
 Maintainer: amadeOS Project <developers@datazuul.com>
 Description: CDE-style two-panel file manager for amadeOS
  A Motif/CDE-styled file manager for the amadeOS desktop with two

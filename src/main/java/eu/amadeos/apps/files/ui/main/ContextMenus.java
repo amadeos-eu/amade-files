@@ -104,6 +104,10 @@ final class ContextMenus {
             menu.add(item("Copy Path", null, () -> presenter.copyPath(dir)));
             return menu;
         }
+        if (place != null && (place.isVirtual() || place.kind() == Place.Kind.SHARE)) {
+            JPopupMenu network = networkMenu(dir, place);
+            if (network != null) return network;
+        }
         // --8<-- [start:drive-menu]
         if (place != null && place.needsMount()) {
             JMenuItem mount = item("Mount and Open", null, () -> presenter.mount(place, true));
@@ -135,7 +139,64 @@ final class ContextMenus {
             menu.add(item("Unmount", null, () -> presenter.unmount(place)));
             menu.add(item(ejectText(place), null, () -> presenter.eject(place)));
         }
+        if (presenter.isOnNetwork(dir)) {
+            menu.add(item("Copy Network Address", null, () -> presenter.copyNetworkAddress(dir, null)));
+        }
+        // --8<-- [start:share-menu]
+        if (place != null && place.kind() == Place.Kind.SHARE) {
+            menu.addSeparator();
+            menu.add(item("Disconnect", null, () -> presenter.disconnect(place)));
+            addSaved(menu, place);
+        }
+        // --8<-- [end:share-menu]
         return menu;
+    }
+
+    /**
+     * Network, a server, a share that is not connected and Connect to Server; null for a connected share, which
+     * gets the folder menu with Disconnect.
+     */
+    private JPopupMenu networkMenu(Path dir, Place place) {
+        JPopupMenu menu = new JPopupMenu();
+        switch (place.kind()) {
+            case NETWORK, CONNECT -> {
+                JMenuItem connect = item("Connect to Server…", key(KeyEvent.VK_K, InputEvent.CTRL_DOWN_MASK), presenter::connectToServer);
+                connect.setFont(connect.getFont().deriveFont(Font.BOLD));
+                menu.add(connect);
+                if (place.kind() == Place.Kind.NETWORK) menu.add(item("Refresh", key(KeyEvent.VK_R, InputEvent.CTRL_DOWN_MASK), presenter::refresh));
+            }
+            case SERVER -> {
+                menu.add(item("Log In As…", null, () -> presenter.logInAs(place)));
+                menu.addSeparator();
+                menu.add(item("Copy Network Address", null, () -> presenter.copyNetworkAddress(dir, place)));
+                addSaved(menu, place);
+            }
+            case SHARE -> {
+                if (!place.isVirtual()) return null;
+                JMenuItem open = item("Connect and Open", null, () -> presenter.connect(place, true));
+                open.setFont(open.getFont().deriveFont(Font.BOLD));
+                menu.add(open);
+                menu.add(item("Connect", null, () -> presenter.connect(place, false)));
+                menu.add(item("Log In As…", null, () -> presenter.logInAs(place)));
+                menu.addSeparator();
+                menu.add(item("Copy Network Address", null, () -> presenter.copyNetworkAddress(dir, place)));
+                addSaved(menu, place);
+            }
+            default -> {
+                return null;
+            }
+        }
+        return menu;
+    }
+
+    /** Forget Password and Remove from Network, for what Files keeps. */
+    private void addSaved(JPopupMenu menu, Place place) {
+        if (!presenter.isSaved(place)) return;
+        menu.addSeparator();
+        if (place.address() != null && !place.address().user().isEmpty() || place.kind() == Place.Kind.SHARE) {
+            menu.add(item("Forget Password", null, () -> presenter.forgetPassword(place)));
+        }
+        menu.add(item("Remove from Network…", null, () -> presenter.removeFromNetwork(place)));
     }
 
     /** Discs come out of the tray; USB drives are switched off so they can be pulled out. */

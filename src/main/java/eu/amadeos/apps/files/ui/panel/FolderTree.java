@@ -82,8 +82,11 @@ public final class FolderTree extends JPanel {
             this.path = path;
             this.place = place;
             // Until it is read, a folder shows that it may have sub-folders.
-            if (place == null || place.kind() != Place.Kind.TRASH) add(new DefaultMutableTreeNode(LOADING));
-            else loaded = true;
+            if (place == null || place.kind() != Place.Kind.TRASH && place.kind() != Place.Kind.CONNECT) {
+                add(new DefaultMutableTreeNode(LOADING));
+            } else {
+                loaded = true;
+            }
         }
     }
     // --8<-- [end:lazy-node]
@@ -109,8 +112,16 @@ public final class FolderTree extends JPanel {
         tree.addTreeSelectionListener(e -> {
             FolderNode node = selectedNode();
             if (node == null || listener == null) return;
-            if (choosingForMenu && node.place != null && node.place.needsMount()) listener.focused(node.path);
-            else if (!revealing) listener.folderSelected(node.path);
+            if (choosingForMenu && node.place != null && (node.place.needsMount() || node.place.isVirtual())) {
+                listener.focused(node.path);
+                return;
+            }
+            // Network and a server are no folders: choosing one opens it in the tree.
+            if (!revealing && node.place != null && (node.place.kind() == Place.Kind.NETWORK
+                    || node.place.kind() == Place.Kind.SERVER)) {
+                tree.expandPath(new TreePath(node.getPath()));
+            }
+            if (!revealing) listener.folderSelected(node.path);
             else if (tree.isFocusOwner()) listener.focused(node.path);
         });
         tree.addFocusListener(new FocusAdapter() {
@@ -232,6 +243,33 @@ public final class FolderTree extends JPanel {
         if (pendingReveal != null) reveal(pendingReveal);
     }
 
+    // --8<-- [start:show-places]
+    /**
+     * The entries below a network entry (the servers below Network, the shares below a server); entries that
+     * stay keep their opened folders. A share that gets connected is a new entry, with its folder as path.
+     *
+     * @param complete false while the list may grow (the shares of a server that was not asked yet): opening the
+     *                 entry then still asks the listener
+     */
+    public void showPlaces(Path parent, List<Place> places, boolean complete) {
+        for (FolderNode node : nodes()) {
+            if (!node.path.equals(parent) || node.place == null) continue;
+            node.loading = false;
+            node.loaded = complete;
+            Map<Place, FolderNode> existing = new HashMap<>();
+            for (int i = 0; i < node.getChildCount(); i++) {
+                if (node.getChildAt(i) instanceof FolderNode child && child.place != null) existing.put(child.place, child);
+            }
+            List<FolderNode> wanted = new ArrayList<>();
+            for (Place place : places) wanted.add(existing.getOrDefault(place, new FolderNode(place.path(), place)));
+            arrange(node, wanted);
+            // Still something to read: the handle stays.
+            if (!complete && node.getChildCount() == 0) model.insertNodeInto(new DefaultMutableTreeNode(LOADING), node, 0);
+        }
+        if (pendingReveal != null) reveal(pendingReveal);
+    }
+    // --8<-- [end:show-places]
+
     // --8<-- [start:update]
     private void update(FolderNode node, List<Path> folders) {
         Map<Path, FolderNode> existing = new HashMap<>();
@@ -240,6 +278,11 @@ public final class FolderTree extends JPanel {
         }
         List<FolderNode> wanted = new ArrayList<>();
         for (Path folder : folders) wanted.add(existing.getOrDefault(folder, new FolderNode(folder, null)));
+        arrange(node, wanted);
+    }
+
+    /** Makes {@code wanted} the children of {@code node}, in this order. */
+    private void arrange(FolderNode node, List<FolderNode> wanted) {
         // New folders first and the old ones after: a folder that has no children for a moment would close.
         for (FolderNode child : wanted) {
             if (child.getParent() == null) model.insertNodeInto(child, node, node.getChildCount());
@@ -260,7 +303,9 @@ public final class FolderTree extends JPanel {
     /** Reads every folder again that was read before, for Refresh, Show Hidden Files and after changes. */
     public void refresh() {
         for (FolderNode node : nodes()) {
-            if (node.loaded && (node.place == null || node.place.kind() != Place.Kind.TRASH) && listener != null) {
+            // The network entries are read again by the presenter, without asking for passwords.
+            if (node.loaded && (node.place == null || node.place.kind() != Place.Kind.TRASH && !node.place.isVirtual())
+                    && listener != null) {
                 node.loading = true;
                 listener.expand(node.path);
             }
@@ -320,11 +365,15 @@ public final class FolderTree extends JPanel {
         }
     }
 
-    /** The place that holds the folder most closely: the home folder before the file system. */
+    /**
+     * The place that holds the folder most closely: the home folder before the file system, a connected network
+     * share (below Network) before both.
+     */
     private FolderNode placeFor(Path dir) {
+        if (!dir.isAbsolute()) return null;
         FolderNode best = null;
-        for (int i = 0; i < root.getChildCount(); i++) {
-            FolderNode node = (FolderNode) root.getChildAt(i);
+        for (FolderNode node : nodes()) {
+            if (node.place == null || node.place.isVirtual()) continue;
             boolean trash = node.place.kind() == Place.Kind.TRASH;
             if (trash ? dir.equals(node.path) : dir.startsWith(node.path)) {
                 if (best == null || node.path.getNameCount() > best.path.getNameCount()) best = node;
@@ -371,15 +420,27 @@ public final class FolderTree extends JPanel {
                 setIcon(node.place != null ? FileIcons.of(node.place.kind()) : FileIcons.folder());
                 setText(node.place != null && node.place.kind() == Place.Kind.HOME
                         ? "Home (" + node.path.getFileName() + ")" : node.toString());
-                // A drive that is plugged in but not mounted is in italics until it is chosen.
-                int style = node.place == null ? Font.PLAIN : node.place.needsMount() ? Font.BOLD | Font.ITALIC : Font.BOLD;
-                setFont(t.getFont().deriveFont(style));
+                setFont(t.getFont().deriveFont(style(node.place)));
             } else {
                 setIcon(null);
                 setFont(t.getFont());
             }
             return this;
         }
+    }
+
+    /**
+     * The places at the top in bold; a drive that is plugged in but not mounted, a share that is not connected
+     * and Connect to Server in italics until they are chosen; servers and shares below Network plain.
+     */
+    private static int style(Place place) {
+        if (place == null) return Font.PLAIN;
+        return switch (place.kind()) {
+            case SERVER -> Font.PLAIN;
+            case SHARE -> place.needsConnect() ? Font.ITALIC : Font.PLAIN;
+            case CONNECT -> Font.ITALIC;
+            default -> place.needsMount() ? Font.BOLD | Font.ITALIC : Font.BOLD;
+        };
     }
 
     /** Drags a folder out of the tree; drops on the folder under the mouse. */
@@ -402,7 +463,9 @@ public final class FolderTree extends JPanel {
         @Override
         Path dropTarget(TransferSupport support) {
             if (!(support.getDropLocation() instanceof JTree.DropLocation location) || location.getPath() == null) return null;
-            return location.getPath().getLastPathComponent() instanceof FolderNode node ? node.path : null;
+            // Nothing can be dropped on a server or a share that is not connected.
+            return location.getPath().getLastPathComponent() instanceof FolderNode node && node.path.isAbsolute()
+                    ? node.path : null;
         }
 
         @Override

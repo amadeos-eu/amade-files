@@ -14,6 +14,7 @@ import java.awt.event.MouseEvent;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
@@ -44,6 +45,8 @@ final class IconicPathBar extends JPanel {
     private Runnable done = () -> {
     };
     private Path current;
+    /** Folders shown under a name of their own (connected network shares) instead of their full path. */
+    private Map<Path, String> names = Map.of();
     private boolean active;
     private boolean editing;
     private int hidden;
@@ -177,11 +180,17 @@ final class IconicPathBar extends JPanel {
         buttons.forEach(this::remove);
         buttons.clear();
         paths.clear();
+        Path named = dir == null ? null : namedRoot(dir);
         if (dir != null) {
-            for (Path p = dir; p != null; p = p.getParent()) paths.addFirst(p);
+            // Below a named folder the path starts with its name: MyCloudEX2Ultra › Public, Photos.
+            for (Path p = dir; p != null; p = p.getParent()) {
+                paths.addFirst(p);
+                if (p.equals(named)) break;
+            }
         }
         for (Path p : paths) {
-            JButton button = new JButton(p.getFileName() == null ? "/" : p.getFileName().toString());
+            String label = p.equals(named) ? names.get(p) : p.getFileName() == null ? "/" : p.getFileName().toString();
+            JButton button = new JButton(label);
             configure(button);
             button.setToolTipText(p.toString());
             button.addActionListener(e -> navigate.accept(p));
@@ -198,6 +207,23 @@ final class IconicPathBar extends JPanel {
         revalidate();
         repaint();
     }
+
+    // --8<-- [start:names]
+    /** Names for folders such as {@code /run/user/1000/gvfs/smb-share:server=nas,share=public}. */
+    void setNames(Map<Path, String> newNames) {
+        names = Map.copyOf(newNames);
+        if (current != null && !editing) setPath(current);
+    }
+
+    /** The named folder that holds {@code dir} most closely, or null. */
+    private Path namedRoot(Path dir) {
+        Path best = null;
+        for (Path root : names.keySet()) {
+            if (dir.startsWith(root) && (best == null || root.getNameCount() > best.getNameCount())) best = root;
+        }
+        return best;
+    }
+    // --8<-- [end:names]
 
     void setActive(boolean active) {
         this.active = active;
