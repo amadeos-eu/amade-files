@@ -2,6 +2,7 @@ package eu.amadeos.apps.files.ui.main;
 
 import eu.amadeos.commons.config.XdgDirectories;
 import eu.amadeos.apps.files.domain.ClipboardFiles;
+import eu.amadeos.apps.files.domain.Drive;
 import eu.amadeos.apps.files.domain.DropMode;
 import eu.amadeos.apps.files.domain.FileEntry;
 import eu.amadeos.apps.files.domain.FilePreferences;
@@ -13,6 +14,8 @@ import eu.amadeos.apps.files.domain.SortKey;
 import eu.amadeos.apps.files.domain.SortOrder;
 import eu.amadeos.apps.files.domain.ViewMode;
 import eu.amadeos.apps.files.repository.PreferencesRepository;
+import eu.amadeos.apps.files.service.ArchiveService;
+import eu.amadeos.apps.files.service.DriveService;
 import eu.amadeos.apps.files.service.FileOperations;
 import eu.amadeos.apps.files.service.FileSystemService;
 import eu.amadeos.apps.files.service.Opener;
@@ -51,6 +54,7 @@ class MainPresenterTest {
     private final FakeView view = new FakeView();
     private final PreferencesRepository preferences = mock(PreferencesRepository.class);
     private final Opener opener = mock(Opener.class);
+    private final DriveService drives = mock(DriveService.class);
     private TrashService trash;
     private MainPresenter presenter;
 
@@ -66,8 +70,8 @@ class MainPresenterTest {
         when(preferences.load()).thenReturn(PANELS.withDirs(home, other));
         trash = new TrashService(new XdgDirectories(
                 Map.of("XDG_DATA_HOME", dir.resolve("data").toString()), home.toString()));
-        presenter = new MainPresenter(view, new FileSystemService(), new FileOperations(), trash, opener,
-                preferences, new DirectExecutorService(), Runnable::run, home);
+        presenter = new MainPresenter(view, new FileSystemService(), new FileOperations(), trash,
+                new ArchiveService(), drives, opener, preferences, new DirectExecutorService(), Runnable::run, home);
     }
 
     private FileEntry entry(Side side, String name) {
@@ -518,6 +522,94 @@ class MainPresenterTest {
 
     // ---- test doubles ---------------------------------------------------------------------------
 
+    // ---- archives and drives -------------------------------------------------------------------
+
+    @Test
+    void compressesTheMarkedFilesAndExtractsByOpening() throws IOException {
+        presenter.start(List.of());
+        presenter.selectionChanged(Side.LEFT, List.of(entry(Side.LEFT, "a.txt"), entry(Side.LEFT, "Docs")),
+                entry(Side.LEFT, "Docs"));
+        view.archiveChoices.add(new ArchiveChoice("bundle", ArchiveService.Format.ZIP));
+        presenter.compress();
+        assertTrue(view.questions.getLast().endsWith("[home]"), view.questions.getLast());
+        assertTrue(Files.isRegularFile(home.resolve("bundle.zip")), view.error);
+        assertEquals("bundle.zip", view.focus.get(Side.LEFT));
+        assertTrue(view.message.startsWith("Created bundle.zip with 1 file"), view.message);
+
+        cursor(Side.LEFT, "bundle.zip");
+        presenter.open(Side.LEFT, entry(Side.LEFT, "bundle.zip"));
+        assertTrue(Files.isRegularFile(home.resolve("bundle/a.txt")), view.error);
+        assertTrue(Files.isDirectory(home.resolve("bundle/Docs")));
+        assertEquals("bundle", view.focus.get(Side.LEFT));
+        verifyNoInteractions(opener);
+    }
+
+    @Test
+    void extractHereNeedsAnArchive() {
+        presenter.start(List.of());
+        cursor(Side.LEFT, "a.txt");
+        presenter.extractHere();
+        assertEquals("Select a zip, tar or 7z archive to extract.", view.message);
+    }
+
+    private static final Drive STICK = new Drive("/dev/sdb1", "/dev/sdb", "STICK", "", "vfat", 8_000_000_000L, null, false);
+
+    @Test
+    void choosingADriveMountsAndOpensIt() throws IOException {
+        Path mount = Files.createDirectories(dir.resolve("media/STICK"));
+        Files.writeString(mount.resolve("photo.jpg"), "jpg");
+        when(preferences.load()).thenReturn(FilePreferences.DEFAULTS.withDirs(home, other));
+        when(drives.drives()).thenReturn(List.of(STICK));
+        when(drives.mount(STICK)).thenAnswer(i -> {
+            when(drives.drives()).thenReturn(List.of(STICK.mountedAt(mount)));
+            return mount;
+        });
+        presenter.start(List.of());
+        Place place = view.places.getLast();
+        assertTrue(place.needsMount());
+        assertEquals("STICK", place.name());
+        // A stick that was there before Files started is not mounted on its own.
+        presenter.refreshPlaces();
+        verify(drives, never()).mount(any());
+
+        presenter.folderSelected(place.path());
+        verify(drives).mount(STICK);
+        assertEquals(mount, view.dirs.get(Side.LEFT));
+        assertEquals(List.of("photo.jpg"), names(Side.LEFT));
+        assertEquals(mount, view.places.getLast().path());
+        assertFalse(view.places.getLast().needsMount());
+    }
+
+    @Test
+    void aStickPluggedInLaterIsMountedAtOnce() {
+        when(drives.drives()).thenReturn(List.of());
+        presenter.start(List.of());
+        when(drives.drives()).thenReturn(List.of(STICK));
+        when(drives.mount(STICK)).thenReturn(dir);
+        presenter.refreshPlaces();
+        verify(drives).mount(STICK);
+    }
+
+    @Test
+    void safelyRemoveLeavesTheDriveFirstAndIsNotUndoneByThePoll() throws IOException {
+        Path mount = Files.createDirectories(dir.resolve("media/STICK"));
+        Drive mounted = STICK.mountedAt(mount);
+        when(drives.drives()).thenReturn(List.of(mounted));
+        presenter.start(List.of(mount.toString()));
+        assertEquals(mount, view.dirs.get(Side.LEFT));
+        doAnswer(i -> {
+            when(drives.drives()).thenReturn(List.of(STICK));
+            return null;
+        }).when(drives).eject(mounted);
+
+        presenter.eject(view.places.getLast());
+        assertEquals(home, view.dirs.get(Side.LEFT));
+        assertEquals("STICK can be removed now.", view.message);
+        assertTrue(view.places.getLast().needsMount());
+        presenter.refreshPlaces();
+        verify(drives, never()).mount(any());
+    }
+
     private static final class FakeView implements MainView {
         final Map<Side, Path> dirs = new EnumMap<>(Side.class);
         final Map<Side, List<FileEntry>> entries = new EnumMap<>(Side.class);
@@ -527,6 +619,7 @@ class MainPresenterTest {
         final Deque<String> answers = new ArrayDeque<>();
         final Deque<Boolean> confirmations = new ArrayDeque<>();
         final Deque<ConflictChoice> conflicts = new ArrayDeque<>();
+        final Deque<ArchiveChoice> archiveChoices = new ArrayDeque<>();
         final List<String> questions = new ArrayList<>();
         final Map<Path, List<Path>> folders = new HashMap<>();
         List<Place> places = List.of();
@@ -592,6 +685,12 @@ class MainPresenterTest {
         public String askText(String title, String text, String initial) {
             questions.add(text);
             return answers.isEmpty() ? null : answers.removeFirst();
+        }
+
+        @Override
+        public ArchiveChoice askArchive(String text, String initialName) {
+            questions.add(text + " [" + initialName + "]");
+            return archiveChoices.isEmpty() ? null : archiveChoices.removeFirst();
         }
 
         @Override

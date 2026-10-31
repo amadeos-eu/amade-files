@@ -54,6 +54,9 @@ public interface MainView {
 
     ConflictChoice askConflict(FileEntry source, FileEntry target);
 
+    /** Name and format of a new archive; null if cancelled. */
+    ArchiveChoice askArchive(String message, String initialName);
+
     /** Shows a progress dialog; {@code cancel} runs when the user presses Cancel. */
     ProgressView showProgress(String title, Runnable cancel);
 

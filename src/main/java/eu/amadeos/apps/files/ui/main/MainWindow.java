@@ -5,6 +5,7 @@ import eu.amadeos.apps.files.domain.ClipboardFiles;
 import eu.amadeos.apps.files.domain.DropMode;
 import eu.amadeos.apps.files.domain.FileEntry;
 import eu.amadeos.apps.files.domain.Place;
+import eu.amadeos.apps.files.service.ArchiveService;
 import eu.amadeos.apps.files.domain.Side;
 import eu.amadeos.apps.files.domain.SortKey;
 import eu.amadeos.apps.files.domain.SortOrder;
@@ -41,6 +42,8 @@ import java.util.Map;
 public final class MainWindow extends JFrame implements MainView {
     /** Every few seconds the tree looks for USB sticks and other media that came or went. */
     private static final int PLACES_POLL_MS = 3000;
+    /** The format chosen last in the Compress dialog, for the next one. */
+    private ArchiveService.Format lastFormat = ArchiveService.Format.ZIP;
 
     private final Map<Side, FilePanel> panels = new EnumMap<>(Side.class);
     private final Map<Side, Path> dirs = new EnumMap<>(Side.class);
@@ -472,6 +475,44 @@ public final class MainWindow extends JFrame implements MainView {
         dialog.dispose();
         return Integer.valueOf(JOptionPane.OK_OPTION).equals(pane.getValue()) ? field.getText() : null;
     }
+
+    // --8<-- [start:ask-archive]
+    @Override
+    public ArchiveChoice askArchive(String message, String initialName) {
+        JTextField name = new JTextField(initialName, 30);
+        JComboBox<ArchiveService.Format> format = new JComboBox<>(ArchiveService.Format.values());
+        format.setSelectedItem(lastFormat);
+        JLabel ending = new JLabel(lastFormat.extension());
+        format.addActionListener(e -> ending.setText(((ArchiveService.Format) format.getSelectedItem()).extension()));
+        JPanel row = new JPanel(new BorderLayout(4, 0));
+        row.setOpaque(false);
+        row.add(name, BorderLayout.CENTER);
+        row.add(ending, BorderLayout.EAST);
+        JPanel formatRow = new JPanel(new BorderLayout(6, 0));
+        formatRow.setOpaque(false);
+        formatRow.add(new JLabel("Format:"), BorderLayout.WEST);
+        formatRow.add(format, BorderLayout.CENTER);
+        JPanel panel = new JPanel(new GridLayout(0, 1, 0, 6));
+        panel.setOpaque(false);
+        panel.add(new JLabel(message));
+        panel.add(row);
+        panel.add(formatRow);
+        JOptionPane pane = new JOptionPane(panel, JOptionPane.QUESTION_MESSAGE, JOptionPane.OK_CANCEL_OPTION) {
+            @Override
+            public void selectInitialValue() {
+                name.requestFocusInWindow();
+                name.selectAll();
+            }
+        };
+        name.addActionListener(e -> pane.setValue(JOptionPane.OK_OPTION));
+        JDialog dialog = pane.createDialog(this, "File Manager - Compress");
+        dialog.setVisible(true);
+        dialog.dispose();
+        if (!Integer.valueOf(JOptionPane.OK_OPTION).equals(pane.getValue()) || name.getText().isBlank()) return null;
+        lastFormat = (ArchiveService.Format) format.getSelectedItem();
+        return new ArchiveChoice(name.getText().strip(), lastFormat);
+    }
+    // --8<-- [end:ask-archive]
 
     @Override
     public ConflictChoice askConflict(FileEntry source, FileEntry target) {
