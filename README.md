@@ -43,16 +43,18 @@ The tree view is the default.
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Folder tree** with Home, the Trash, the File System and every mounted medium below `/media`,
-  `/run/media` and `/mnt` (USB sticks appear and disappear within a few seconds). Folders are read
+- **Folder tree** with Home, the Trash, the File System, every mounted medium below `/media`,
+  `/run/media` and `/mnt`, and every USB stick, memory card, external disk and disc that is plugged in
+  (they appear and disappear within a few seconds; see *USB sticks and other drives*). Folders are read
   when they are opened for the first time, so a slow network share never blocks the window. The
   tree follows the folder shown on the right.
 - **Contents** of the chosen folder, without a `..` line. Selection works as in other graphical file
   managers: a click selects one line, Ctrl+click adds or removes, Shift+click selects a range. The
   keys of the two-panel view (Insert, F2 to F8, …) work here too.
 - **Context menus** (right mouse button) on files, on the free space and on folders in the tree:
-  Open, Open in Two Panels, View, Edit, Cut, Copy, Paste, Rename, Move to Trash, Delete Permanently,
-  New Folder, Copy Path; in the trash Restore and Empty Trash. While the tree has the keyboard focus,
+  Open, Open in Two Panels, View, Edit, Extract Here, Extract To…, Cut, Copy, Paste, Rename, Compress…,
+  Move to Trash, Delete Permanently, New Folder, Copy Path; in the trash Restore and Empty Trash; on
+  drives Mount, Unmount and Safely Remove (Eject for discs). While the tree has the keyboard focus,
   F2, Delete, Ctrl+X/C/V and the menus work on the folder chosen in it. Home, Trash, File System and
   media cannot be moved, renamed or deleted.
 - **Drag and drop** onto a folder in the tree or in the list: without a key files are *moved* on the
@@ -162,6 +164,39 @@ folders and refusing to replace a file that is there now; *File → Empty Trash�
 in the trash after asking; F8 in the trash deletes the marked files for good, after asking. The
 `.trashinfo` files go with their files.
 
+## USB sticks and other drives
+
+The tree lists the drives that can be removed: USB sticks, memory cards, external disks and discs
+(`lsblk`: `RM` or `HOTPLUG` set, connected by USB, or an optical drive). Internal disks and the stick
+the live system started from are left out.
+
+- A drive that is plugged in while Files is open is **mounted at once**. One that was there before
+  Files started is shown in *italics* and mounted when it is chosen or opened in the tree.
+- Mounting, unmounting and switching off go through `udisksctl` (package `udisks2`), which mounts below
+  `/media/USER/LABEL`. udisks lets the user of the active session do this without a password; for other
+  drives the desktop's polkit agent asks.
+- **Unmount** keeps the drive plugged in but unmounted; Files does not mount it again until it is chosen.
+  **Safely Remove** unmounts every file system on the stick and switches it off, so that it can be
+  pulled out; **Eject** opens the tray of a disc drive (`eject`). Panels that show something on the
+  drive go to the home folder first. If a program still uses the drive, Files says so.
+
+## Archives
+
+Files reads zip, tar, tar.gz/tgz, tar.bz2, tar.xz, 7z and single files compressed with gzip, bzip2 or
+xz, and writes zip, tar.gz and tar.xz, in pure Java ([Apache Commons Compress](https://commons.apache.org/proper/commons-compress/)),
+so nothing has to be installed.
+
+- **Opening** an archive (double-click, Enter) extracts it next to itself, as amadeOS has no separate
+  archive program. *Extract Here* does the same for every marked archive; *Extract To…* asks for a folder.
+- Extracting **never overwrites** anything. The archive is unpacked into a hidden folder first; when it is
+  complete, a single top-level folder or file moves into place under its own name if that is free, and
+  anything else becomes a folder named after the archive (`photos (2)` if taken). Cancelling leaves
+  nothing behind.
+- Entries that would land outside the target (`../`) and links that point outside it are left out; the
+  status line counts them. Password-protected archives are not supported yet.
+- **Compress…** packs the marked files and folders into a new archive in their folder (the home folder if
+  that is not writable); the dialog asks for the name and the format, and remembers the format.
+
 ## Launch feedback
 
 While a document's application or the Text Editor starts, the amadeOS window manager shows the busy
@@ -230,7 +265,10 @@ so the amadeOS front panel lists it in the File Manager drawer.
 - [x] Drag and drop between panels, the tree and other programs
 - [ ] Drag and drop onto the desktop and the Front Panel
 - [ ] Properties (permissions, owner), Open With…, find files, compare folders
-- [ ] Archives as folders; remote folders (SFTP)
+- [x] USB sticks, memory cards and discs in the tree: mount, unmount, safely remove (udisks2)
+- [x] Extract (zip, tar.*, 7z, gz/bz2/xz) and compress (zip, tar.gz, tar.xz)
+- [ ] Password-protected archives; browsing archives as folders; remote folders (SFTP)
+- [ ] Formatting a USB stick (a disk tool)
 
 ## License
 

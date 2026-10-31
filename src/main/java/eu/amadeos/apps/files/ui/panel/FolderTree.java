@@ -66,6 +66,8 @@ public final class FolderTree extends JPanel {
     private Listener listener;
     private Path pendingReveal;
     private boolean revealing;
+    /** The right mouse button chooses a folder for its menu; a drive is only mounted from the menu then. */
+    private boolean choosingForMenu;
 
     // --8<-- [start:lazy-node]
     /** One folder in the tree. */
@@ -107,7 +109,8 @@ public final class FolderTree extends JPanel {
         tree.addTreeSelectionListener(e -> {
             FolderNode node = selectedNode();
             if (node == null || listener == null) return;
-            if (!revealing) listener.folderSelected(node.path);
+            if (choosingForMenu && node.place != null && node.place.needsMount()) listener.focused(node.path);
+            else if (!revealing) listener.folderSelected(node.path);
             else if (tree.isFocusOwner()) listener.focused(node.path);
         });
         tree.addFocusListener(new FocusAdapter() {
@@ -130,7 +133,12 @@ public final class FolderTree extends JPanel {
                 int row = tree.getRowForLocation(e.getX(), e.getY());
                 if (row < 0) return;
                 tree.requestFocusInWindow();
-                tree.setSelectionRow(row);
+                choosingForMenu = true;
+                try {
+                    tree.setSelectionRow(row);
+                } finally {
+                    choosingForMenu = false;
+                }
                 FolderNode node = selectedNode();
                 if (node != null && listener != null) listener.popup(node.path, node.place, tree, e.getX(), e.getY());
             }
@@ -363,7 +371,9 @@ public final class FolderTree extends JPanel {
                 setIcon(node.place != null ? FileIcons.of(node.place.kind()) : FileIcons.folder());
                 setText(node.place != null && node.place.kind() == Place.Kind.HOME
                         ? "Home (" + node.path.getFileName() + ")" : node.toString());
-                setFont(t.getFont().deriveFont(node.place != null ? Font.BOLD : Font.PLAIN));
+                // A drive that is plugged in but not mounted is in italics until it is chosen.
+                int style = node.place == null ? Font.PLAIN : node.place.needsMount() ? Font.BOLD | Font.ITALIC : Font.BOLD;
+                setFont(t.getFont().deriveFont(style));
             } else {
                 setIcon(null);
                 setFont(t.getFont());

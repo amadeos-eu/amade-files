@@ -10,7 +10,7 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 
 /**
- * Progress of a copy, move or delete, with Cancel. Appears only if the operation takes longer than
+ * Progress of a copy, move, delete, extract or compress, with Cancel. Appears only if the operation takes longer than
  * {@link #DELAY_MILLIS}, so quick operations do not flash a window.
  */
 public final class ProgressDialog extends JDialog implements ProgressView {
@@ -69,7 +69,9 @@ public final class ProgressDialog extends JDialog implements ProgressView {
         bar.setValue((int) Math.round(progress.fraction() * 1000));
         if (progress.current() != null) file.setText(progress.current().getFileName() == null
                 ? progress.current().toString() : progress.current().getFileName().toString());
-        String text = progress.filesDone() + " of " + progress.filesTotal();
+        // Archives that are read as a stream do not tell in advance how many files they hold.
+        String text = progress.filesTotal() > 0 ? progress.filesDone() + " of " + progress.filesTotal()
+                : Formats.count(progress.filesDone(), "file");
         if (progress.bytesTotal() > 0) {
             text += " · " + Formats.size(progress.bytesDone()) + " of " + Formats.size(progress.bytesTotal());
         }
