@@ -35,6 +35,8 @@ final class MainMenuBar extends JMenuBar {
         file.add(item("Extract To…", null, presenter::extractTo));
         file.add(item("Compress…", null, presenter::compress));
         file.addSeparator();
+        file.add(item("Connect to Server…", key(KeyEvent.VK_K, ctrl), presenter::connectToServer));
+        file.addSeparator();
         file.add(item("Move to Trash", key(KeyEvent.VK_F8, 0), presenter::moveToTrash));
         file.add(item("Delete Permanently…", key(KeyEvent.VK_F8, shift), presenter::deletePermanently));
         file.addSeparator();
@@ -133,7 +135,8 @@ final class MainMenuBar extends JMenuBar {
                 <tr><td><b>F8, Delete</b></td><td>Move to trash</td></tr>
                 <tr><td><b>Shift+F8, Shift+Delete</b></td><td>Delete permanently (in the trash also F8)</td></tr>
                 <tr><td><b>Ctrl+H</b></td><td>Show hidden files</td></tr>
-                <tr><td><b>Ctrl+L</b></td><td>Type a path in the path bar (Tab completes)</td></tr>
+                <tr><td><b>Ctrl+L</b></td><td>Type a path in the path bar (Tab completes); smb://, nfs://, davs:// connect</td></tr>
+                <tr><td><b>Ctrl+K</b></td><td>Connect to Server (network share, NFS, WebDAV, FTP, SFTP)</td></tr>
                 <tr><td><b>Ctrl+U</b></td><td>Swap panels</td></tr>
                 <tr><td><b>Ctrl+=</b></td><td>Same folder in the other panel</td></tr>
                 <tr><td><b>Ctrl+F1</b></td><td>One or two panels (two-panel view)</td></tr>

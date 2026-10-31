@@ -2,19 +2,26 @@ package eu.amadeos.apps.files.ui.main;
 
 import com.google.inject.Inject;
 import eu.amadeos.commons.desktop.DesktopLauncher;
+import eu.amadeos.commons.desktop.PasswordStore;
 import eu.amadeos.commons.swing.EdtExecutor;
 import eu.amadeos.apps.files.domain.ClipboardFiles;
+import eu.amadeos.apps.files.domain.Credentials;
+import eu.amadeos.apps.files.domain.DiscoveredServer;
 import eu.amadeos.apps.files.domain.Drive;
 import eu.amadeos.apps.files.domain.DropMode;
 import eu.amadeos.apps.files.domain.FileEntry;
 import eu.amadeos.apps.files.domain.FilePreferences;
+import eu.amadeos.apps.files.domain.NetworkAddress;
+import eu.amadeos.apps.files.domain.NetworkMount;
 import eu.amadeos.apps.files.domain.Place;
 import eu.amadeos.apps.files.domain.Progress;
 import eu.amadeos.apps.files.domain.Resolution;
+import eu.amadeos.apps.files.domain.SavedLocation;
 import eu.amadeos.apps.files.domain.Side;
 import eu.amadeos.apps.files.domain.SortKey;
 import eu.amadeos.apps.files.domain.SortOrder;
 import eu.amadeos.apps.files.domain.ViewMode;
+import eu.amadeos.apps.files.repository.NetworkRepository;
 import eu.amadeos.apps.files.repository.PreferencesRepository;
 import eu.amadeos.apps.files.service.ArchiveService;
 import eu.amadeos.apps.files.service.DriveService;
@@ -23,6 +30,10 @@ import eu.amadeos.apps.files.service.FileOperations;
 import eu.amadeos.apps.files.service.FileOperations.Summary;
 import eu.amadeos.apps.files.service.FileSystemService;
 import eu.amadeos.apps.files.service.Formats;
+import eu.amadeos.apps.files.service.NetworkAutostart;
+import eu.amadeos.apps.files.service.NetworkLoginException;
+import eu.amadeos.apps.files.service.NetworkPlaces;
+import eu.amadeos.apps.files.service.NetworkService;
 import eu.amadeos.apps.files.service.Opener;
 import eu.amadeos.apps.files.service.OperationCancelledException;
 import eu.amadeos.apps.files.service.OperationListener;
@@ -37,6 +48,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.List;
@@ -74,6 +86,10 @@ public final class MainPresenter {
     private final ExecutorService executor;
     private final Executor edt;
     private final Path home;
+    private final NetworkService network;
+    private final NetworkRepository networkRepository;
+    private final PasswordStore passwords;
+    private final NetworkAutostart autostart;
 
     private final Map<Side, PanelState> panels = new EnumMap<>(Side.class);
     private Side active = Side.LEFT;
@@ -90,6 +106,19 @@ public final class MainPresenter {
     private final Set<String> changingDrives = new HashSet<>();
     /** Devices the user unmounted: not mounted again on their own while they stay plugged in. */
     private final Set<String> unmountedByUser = new HashSet<>();
+
+    /** Servers and shares the user keeps or logged in to, and the recent addresses. */
+    private NetworkRepository.Data networkData = NetworkRepository.Data.EMPTY;
+    private List<DiscoveredServer> discovered = List.of();
+    private long lastDiscovery = Long.MIN_VALUE;
+    private boolean discovering;
+    /** The shares of each SMB server read so far, by the server's key. */
+    private final Map<String, List<String>> shareLists = new HashMap<>();
+    private NetworkPlaces.Tree networkTree = NetworkPlaces.Tree.EMPTY;
+    /** Shares and servers being connected or read right now, by key. */
+    private final Set<String> connecting = new HashSet<>();
+    /** Passwords given without "Remember": kept while Files runs. */
+    private final Map<String, String> sessionPasswords = new HashMap<>();
 
     /** What one panel shows. */
     private static final class PanelState {
@@ -113,14 +142,18 @@ public final class MainPresenter {
     @Inject
     public MainPresenter(MainView view, FileSystemService fileSystem, FileOperations operations, TrashService trash,
                          ArchiveService archives, DriveService drives, Opener opener,
-                         PreferencesRepository preferencesRepository, ExecutorService executor, EdtExecutor edt) {
-        this(view, fileSystem, operations, trash, archives, drives, opener, preferencesRepository, executor, edt,
-                Path.of(System.getProperty("user.home")));
+                         PreferencesRepository preferencesRepository, NetworkService network,
+                         NetworkRepository networkRepository, PasswordStore passwords, NetworkAutostart autostart,
+                         ExecutorService executor, EdtExecutor edt) {
+        this(view, fileSystem, operations, trash, archives, drives, opener, preferencesRepository, network,
+                networkRepository, passwords, autostart, executor, edt, Path.of(System.getProperty("user.home")));
     }
 
     MainPresenter(MainView view, FileSystemService fileSystem, FileOperations operations, TrashService trash,
                   ArchiveService archives, DriveService drives, Opener opener,
-                  PreferencesRepository preferencesRepository, ExecutorService executor, Executor edt, Path home) {
+                  PreferencesRepository preferencesRepository, NetworkService network,
+                  NetworkRepository networkRepository, PasswordStore passwords, NetworkAutostart autostart,
+                  ExecutorService executor, Executor edt, Path home) {
         this.view = view;
         this.fileSystem = fileSystem;
         this.operations = operations;
@@ -132,6 +165,10 @@ public final class MainPresenter {
         this.executor = executor;
         this.edt = edt;
         this.home = home;
+        this.network = network;
+        this.networkRepository = networkRepository;
+        this.passwords = passwords;
+        this.autostart = autostart;
         for (Side side : Side.values()) panels.put(side, new PanelState());
     }
 
@@ -151,6 +188,11 @@ public final class MainPresenter {
         view.setTwoPanels(preferences.twoPanels());
         view.setViewMode(preferences.viewMode());
         view.setActive(active);
+        try {
+            networkData = networkRepository.load();
+        } catch (RuntimeException e) {
+            LOG.warn("Cannot read the network servers", e);
+        }
         refreshPlaces();
         for (Side side : Side.values()) {
             int index = side.ordinal();
@@ -247,6 +289,7 @@ public final class MainPresenter {
         for (Side side : Side.values()) reload(side);
         view.refreshFolders();
         refreshPlaces();
+        discover(true);
     }
 
     /** The panel's lines; the tree view leaves out the parent line, as the tree leads up. */
@@ -758,10 +801,13 @@ public final class MainPresenter {
     }
 
     private boolean isPlace(Path path) {
-        return path.getParent() == null || places.stream().anyMatch(p -> p.path().equals(path));
+        return path.getParent() == null || places.stream().anyMatch(p -> p.path().equals(path))
+                || networkTree.mounts().stream().anyMatch(m -> m.root().equals(path));
     }
 
     private String placeName(Path path) {
+        String share = networkTree.folderNames().get(path);
+        if (share != null) return share;
         return places.stream().filter(p -> p.path().equals(path)).map(Place::name).findFirst()
                 .orElse(path.getFileName() == null ? path.toString() : path.getFileName().toString());
     }
@@ -872,6 +918,15 @@ public final class MainPresenter {
      */
     public void goTo(Side side, String text) {
         if (text == null || text.isBlank()) return;
+        // smb://nas/share, nfs://, davs:// or \\server\share: Connect to Server without the dialog.
+        if (text.strip().matches("^[A-Za-z][A-Za-z0-9+.-]*://.*") || text.strip().startsWith("\\\\")) {
+            try {
+                connectAddress(NetworkAddress.parse(text), false);
+            } catch (IllegalArgumentException e) {
+                view.showError(e.getMessage());
+            }
+            return;
+        }
         PanelState panel = panels.get(side);
         Path target = toPath(text, panel.dir);
         if (target == null) {
@@ -1008,7 +1063,7 @@ public final class MainPresenter {
     // --8<-- [start:drop]
     /** Files dropped on a folder: moved or copied, or trashed when dropped on the trash. */
     public void drop(List<Path> sources, Path target, DropMode mode) {
-        if (sources.isEmpty() || target == null || describeDrop(sources, target, mode) == null) return;
+        if (sources.isEmpty() || target == null || !target.isAbsolute() || describeDrop(sources, target, mode) == null) return;
         if (sources.stream().anyMatch(this::isPlace)) {
             view.setStatus(placeName(sources.stream().filter(this::isPlace).findFirst().orElseThrow())
                     + " cannot be moved, renamed or deleted.");
@@ -1029,7 +1084,7 @@ public final class MainPresenter {
      * @param sources the dragged files; empty while another program does not tell them yet
      */
     public String describeDrop(List<Path> sources, Path target, DropMode mode) {
-        if (target == null) return null;
+        if (target == null || !target.isAbsolute()) return null;
         for (Path source : sources) {
             if (target.startsWith(source) || isPlace(source)) return null;
         }
@@ -1053,6 +1108,10 @@ public final class MainPresenter {
 
     /** A folder was chosen in the tree: the contents side shows it, and the commands work on it. */
     public void folderSelected(Path dir) {
+        if (!dir.isAbsolute()) {
+            networkSelected(dir);
+            return;
+        }
         Place drive = unmountedDrive(dir);
         if (drive != null) {
             mount(drive, true);
@@ -1070,11 +1129,15 @@ public final class MainPresenter {
     /** The tree got the keyboard focus. */
     public void treeFocused(Path dir) {
         // A drive that is not mounted yet has no folder for the commands to work on.
-        if (dir != null) treeTarget = unmountedDrive(dir) == null ? dir : null;
+        if (dir != null) treeTarget = dir.isAbsolute() && unmountedDrive(dir) == null ? dir : null;
     }
 
     /** A folder of the tree is opened for the first time, or read again: its sub-folders. */
     public void expandFolder(Path dir) {
+        if (!dir.isAbsolute()) {
+            expandNetwork(dir);
+            return;
+        }
         Place drive = unmountedDrive(dir);
         if (drive != null) {
             view.showFolders(dir, List.of());
@@ -1093,7 +1156,11 @@ public final class MainPresenter {
      * or that the user unmounted, waits until it is chosen.
      */
     public void refreshPlaces() {
-        async(() -> DriveService.withDrives(fileSystem.places(home, trash.homeTrashFiles()), drives.drives()), found -> {
+        AtomicReference<List<NetworkMount>> mounts = new AtomicReference<>(List.of());
+        async(() -> {
+            mounts.set(network.mounts());
+            return allPlaces();
+        }, found -> {
             Set<String> devices = new HashSet<>();
             for (Place place : found) if (place.drive() != null) devices.add(place.drive().device());
             unmountedByUser.retainAll(devices);
@@ -1106,10 +1173,20 @@ public final class MainPresenter {
                 }
             }
             knownDevices = devices;
-            if (found.equals(places)) return;
-            places = found;
-            view.setPlaces(found);
+            if (!found.equals(places)) {
+                places = found;
+                view.setPlaces(found);
+            }
+            showNetwork(mounts.get(), false);
+            discover(false);
         }, error -> LOG.debug("Cannot read the places: {}", error));
+    }
+
+    /** Home, trash, file system, the drives and Network. */
+    private List<Place> allPlaces() {
+        List<Place> all = new ArrayList<>(DriveService.withDrives(fileSystem.places(home, trash.homeTrashFiles()), drives.drives()));
+        all.add(NetworkPlaces.network());
+        return all;
     }
     // --8<-- [end:refresh-places]
 
@@ -1127,8 +1204,7 @@ public final class MainPresenter {
         view.setStatus("Mounting " + drive.name() + " …");
         async(() -> {
             Path mountPoint = drives.mount(drive);
-            return new Mounted(mountPoint, DriveService.withDrives(fileSystem.places(home, trash.homeTrashFiles()),
-                    drives.drives()));
+            return new Mounted(mountPoint, allPlaces());
         }, mounted -> {
             changingDrives.remove(drive.device());
             places = mounted.places();
@@ -1178,7 +1254,7 @@ public final class MainPresenter {
         async(() -> {
             if (eject) drives.eject(drive);
             else drives.unmount(drive);
-            return DriveService.withDrives(fileSystem.places(home, trash.homeTrashFiles()), drives.drives());
+            return allPlaces();
         }, found -> {
             changingDrives.remove(drive.device());
             places = found;
@@ -1191,6 +1267,416 @@ public final class MainPresenter {
         });
     }
     // --8<-- [end:eject]
+
+    // ---- network --------------------------------------------------------------------------------
+
+    /** How often Files asks gvfs again which servers announce themselves. */
+    private static final long DISCOVERY_INTERVAL_NANOS = 30_000_000_000L;
+
+    // --8<-- [start:show-network]
+    /** Puts the servers, shares and connected folders into the tree, when something changed (or always). */
+    private void showNetwork(List<NetworkMount> mounts, boolean always) {
+        NetworkPlaces.Tree tree = NetworkPlaces.build(discovered, networkData.locations(), mounts, shareLists);
+        if (!always && tree.equals(networkTree)) return;
+        networkTree = tree;
+        view.showPlaces(Place.NETWORK_PATH, tree.top(), true);
+        for (Place server : tree.top()) {
+            if (server.kind() != Place.Kind.SERVER) continue;
+            view.showPlaces(server.path(), tree.children().getOrDefault(server.path(), List.of()),
+                    shareLists.containsKey(server.address().server().key()));
+        }
+        view.setFolderNames(tree.folderNames());
+    }
+    // --8<-- [end:show-network]
+
+    /** Asks gvfs for the servers in the network, at most every 30 seconds unless {@code now}. */
+    private void discover(boolean now) {
+        long time = System.nanoTime();
+        if (discovering || !now && lastDiscovery != Long.MIN_VALUE && time - lastDiscovery < DISCOVERY_INTERVAL_NANOS) return;
+        discovering = true;
+        async(network::discover, found -> {
+            discovering = false;
+            lastDiscovery = System.nanoTime();
+            discovered = found;
+            showNetwork(networkTree.mounts(), false);
+        }, error -> discovering = false);
+    }
+
+    /** Reads what is connected again and shows it. */
+    private void refreshNetwork() {
+        async(network::mounts, mounts -> showNetwork(mounts, false), error -> LOG.debug("Cannot read the mounts: {}", error));
+    }
+
+    /** A network entry without a folder was chosen in the tree. */
+    private void networkSelected(Path dir) {
+        treeTarget = null;
+        Place place = dir.equals(Place.NETWORK_PATH) ? NetworkPlaces.network() : networkTree.find(dir);
+        if (place == null) return;
+        switch (place.kind()) {
+            case CONNECT -> connectToServer(null);
+            case SHARE -> connect(place, true);
+            case SERVER -> view.setStatus("The shares of " + place.name() + ". Choose one to connect it.");
+            default -> view.setStatus(discovered.isEmpty() && networkTree.top().size() <= 1
+                    ? "No servers found yet. Connect to Server (Ctrl+K) adds one by its name or address."
+                    : "Servers in this network. Connect to Server (Ctrl+K) adds one that is not found.");
+        }
+    }
+
+    /** A network entry is opened in the tree: the servers, or the shares of a server, or a share connects. */
+    private void expandNetwork(Path dir) {
+        if (dir.equals(Place.NETWORK_PATH)) {
+            view.showPlaces(dir, networkTree.top(), true);
+            discover(true);
+            return;
+        }
+        Place place = networkTree.find(dir);
+        if (place != null && place.kind() == Place.Kind.SERVER) {
+            listShares(place, null);
+        } else if (place != null && place.needsConnect()) {
+            view.showFolders(dir, List.of());
+            connect(place, false);
+        } else {
+            view.showFolders(dir, List.of());
+        }
+    }
+
+    // --8<-- [start:list-shares]
+    /**
+     * Reads the shares of a server: as the user it was logged in to before, otherwise as a guest; if the server
+     * shows them to registered users only, the log-in dialog asks.
+     *
+     * @param login null for the saved login or guest
+     */
+    private void listShares(Place server, LoginChoice login) {
+        NetworkAddress address = server.address();
+        String key = address.server().key();
+        if (!connecting.add(key)) return;
+        NetworkRepository.Data data = networkData;
+        view.setStatus("Reading the shares of " + server.name() + " …");
+        asyncTry(() -> {
+            Credentials credentials = login != null ? login.credentials() : savedCredentials(data, address.server());
+            return network.shares(address, credentials);
+        }, shares -> {
+            connecting.remove(key);
+            shareLists.put(key, shares);
+            if (login != null) rememberLogin(address.server(), login, false);
+            showNetwork(networkTree.mounts(), true);
+            view.setStatus(shares.isEmpty() ? server.name() + " shows no shares." : Formats.count(shares.size(), "share")
+                    + " on " + server.name() + ".");
+        }, error -> {
+            connecting.remove(key);
+            if (error instanceof NetworkLoginException login1) {
+                LoginChoice choice = askLogin(address.server(), server.name(), login1, null);
+                if (choice != null) {
+                    listShares(server, choice);
+                    return;
+                }
+            } else {
+                view.showError(error.getMessage());
+            }
+            view.showPlaces(server.path(), networkTree.children().getOrDefault(server.path(), List.of()), false);
+            view.setStatus("The shares of " + server.name() + " were not read.");
+        });
+    }
+    // --8<-- [end:list-shares]
+
+    /** Connects a share; {@code open} shows it on the contents side afterwards. */
+    public void connect(Place share, boolean open) {
+        if (share.address() == null) return;
+        if (!share.isVirtual()) {
+            if (open) openNetworkFolder(share.path());
+            return;
+        }
+        connect(share.address(), share.name(), open, null);
+    }
+
+    /** Log In As: connects a share with a user name and password asked for first. */
+    public void logInAs(Place share) {
+        if (share.address() == null) return;
+        if (share.kind() == Place.Kind.SERVER) {
+            LoginChoice choice = askLogin(share.address().server(), share.name(), null, null);
+            if (choice != null) listShares(share, choice);
+            return;
+        }
+        LoginChoice choice = askLogin(share.address(), share.name(), null, autoConnectOf(share.address()));
+        if (choice != null) connect(share.address(), share.name(), true, choice);
+    }
+
+    // --8<-- [start:connect]
+    /**
+     * Connects with the given login, or the saved one (password from the keyring), or as a guest. When the server
+     * wants a password, the log-in dialog asks and the connection is tried again.
+     */
+    private void connect(NetworkAddress address, String name, boolean open, LoginChoice login) {
+        String key = address.shareAddress().key();
+        if (!connecting.add(key)) return;
+        NetworkRepository.Data data = networkData;
+        view.setStatus("Connecting to " + name + " …");
+        asyncTry(() -> {
+            Credentials credentials = login != null ? login.credentials() : savedCredentials(data, address);
+            return network.connect(address, credentials);
+        }, folder -> {
+            connecting.remove(key);
+            if (login != null) rememberLogin(address.shareAddress(), login, true);
+            view.setStatus(name + " is connected.");
+            async(network::mounts, mounts -> {
+                showNetwork(mounts, false);
+                if (open) openNetworkFolder(folder);
+            }, error -> {
+                if (open) openNetworkFolder(folder);
+            });
+        }, error -> {
+            connecting.remove(key);
+            if (error instanceof NetworkLoginException needed) {
+                LoginChoice choice = askLogin(address, name, needed, autoConnectOf(address));
+                if (choice != null) connect(address, name, open, choice);
+                else view.setStatus(name + " is not connected.");
+            } else {
+                view.showError(error.getMessage());
+            }
+        });
+    }
+    // --8<-- [end:connect]
+
+    private void openNetworkFolder(Path folder) {
+        if (active != Side.LEFT && treeView()) panelActivated(Side.LEFT);
+        treeTarget = null;
+        load(treeView() ? Side.LEFT : active, folder, null);
+    }
+
+    /**
+     * The saved login of a share (or of its server), with the password from the keyring; guest if it was saved
+     * as guest; null (try as guest) if nothing is saved. Runs in the background: the keyring is a program.
+     *
+     * @throws NetworkLoginException if a user is saved but no password
+     */
+    private Credentials savedCredentials(NetworkRepository.Data data, NetworkAddress address) {
+        SavedLocation saved = data.find(address.shareAddress());
+        if (saved == null && address.isSmb()) saved = data.find(address.server());
+        NetworkAddress login = saved != null ? saved.address() : address;
+        if (saved != null && saved.guest()) return Credentials.GUEST;
+        if (login.user().isEmpty()) return null;
+        String password = password(login);
+        if (password == null) {
+            throw new NetworkLoginException("Enter the password for " + login.user() + " on " + address.serverName() + ".", false);
+        }
+        return Credentials.of(login.user(), login.domain(), password);
+    }
+
+    private String password(NetworkAddress login) {
+        String key = login.uri();
+        String session;
+        synchronized (sessionPasswords) {
+            session = sessionPasswords.get(key);
+        }
+        return session != null ? session : passwords.lookup(key).orElse(null);
+    }
+
+    private Boolean autoConnectOf(NetworkAddress address) {
+        SavedLocation saved = networkData.find(address.shareAddress());
+        return saved != null && saved.autoConnect();
+    }
+
+    /** The log-in dialog for a server or share; null if cancelled. */
+    private LoginChoice askLogin(NetworkAddress address, String name, NetworkLoginException reason, Boolean autoConnect) {
+        SavedLocation saved = networkData.find(address.shareAddress());
+        if (saved == null && address.isSmb()) saved = networkData.find(address.server());
+        NetworkAddress known = saved != null && !saved.address().user().isEmpty() ? saved.address() : address;
+        String user = !known.user().isEmpty() ? known.user() : System.getProperty("user.name", "");
+        String message = reason == null ? "Log in to " + (address.isSmb() && !address.share().isEmpty()
+                ? "the share " + address.share() + " on " + address.serverName() : name) + "."
+                : reason.rejected() ? reason.getMessage() + " Please try again." : reason.getMessage();
+        return view.askLogin(new LoginRequest("Log In to " + address.serverName(), message, user, known.domain(),
+                address.isSmb(), false, true, autoConnect, passwords.isPersistent()));
+    }
+
+    // --8<-- [start:remember]
+    /**
+     * After a successful log-in: user, workgroup and guest go to network.conf, the password to the keyring
+     * (or into memory, without "Remember"); "Connect again at login" updates the autostart entry.
+     */
+    private void rememberLogin(NetworkAddress address, LoginChoice login, boolean share) {
+        Credentials credentials = login.credentials();
+        NetworkAddress withLogin = NetworkService.login(address, credentials);
+        SavedLocation old = networkData.find(address);
+        SavedLocation saved = new SavedLocation(old != null ? old.name() : "", withLogin, credentials.guest(),
+                old == null || old.keep(), share && login.autoConnect());
+        networkData = networkData.with(saved);
+        NetworkRepository.Data data = networkData;
+        String key = withLogin.uri();
+        if (!credentials.guest()) {
+            synchronized (sessionPasswords) {
+                sessionPasswords.put(key, credentials.password());
+            }
+        }
+        executor.execute(() -> {
+            try {
+                networkRepository.save(data);
+                autostart.update(data.anyAutoConnect());
+                if (!credentials.guest() && login.remember()) {
+                    passwords.store(key, "File Manager: " + withLogin.user() + " on " + withLogin.serverName()
+                            + (withLogin.share().isEmpty() ? "" : "/" + withLogin.share()), credentials.password());
+                }
+            } catch (RuntimeException e) {
+                LOG.warn("Cannot save the login for {}", address, e);
+            }
+        });
+    }
+    // --8<-- [end:remember]
+
+    /** Disconnect: panels that show something on the share go home first. */
+    public void disconnect(Place share) {
+        NetworkMount mount = networkTree.mountOf(share.path());
+        if (mount == null) return;
+        if (busy && !view.confirm("Disconnect", "A file operation is still running. Disconnect " + share.name() + " anyway?")) return;
+        for (Side side : Side.values()) {
+            PanelState panel = panels.get(side);
+            if (panel.dir != null && panel.dir.startsWith(mount.root())) load(side, home, null);
+        }
+        if (treeTarget != null && treeTarget.startsWith(mount.root())) treeTarget = null;
+        view.setStatus("Disconnecting " + share.name() + " …");
+        async(() -> {
+            network.disconnect(mount);
+            return network.mounts();
+        }, mounts -> {
+            showNetwork(mounts, false);
+            view.setStatus(share.name() + " is disconnected.");
+        }, view::showError);
+    }
+
+    /** Forget Password: out of the keyring and memory; the next connection asks again. */
+    public void forgetPassword(Place place) {
+        SavedLocation saved = place.address() == null ? null : networkData.find(place.address().shareAddress());
+        NetworkAddress login = saved != null ? saved.address() : place.address();
+        if (login == null || login.user().isEmpty()) {
+            view.setStatus("No password is stored for " + place.name() + ".");
+            return;
+        }
+        String key = login.uri();
+        synchronized (sessionPasswords) {
+            sessionPasswords.remove(key);
+        }
+        async(() -> {
+            passwords.delete(key);
+            return null;
+        }, ignored -> view.setStatus("The password for " + place.name() + " is forgotten."), view::showError);
+    }
+
+    /** Whether Files keeps a login or an entry for this server or share. */
+    public boolean isSaved(Place place) {
+        return place.address() != null && networkData.find(place.kind() == Place.Kind.SERVER
+                ? place.address().server() : place.address().shareAddress()) != null;
+    }
+
+    /** Remove from Network: the entry, its login and its password; a server takes its shares along. */
+    public void removeFromNetwork(Place place) {
+        if (place.address() == null || !view.confirm("Remove from Network", "Remove " + place.name()
+                + " from Network?\nIts saved user name and password are removed, too. It stays in the list while it is found in the network.")) {
+            return;
+        }
+        NetworkAddress address = place.kind() == Place.Kind.SERVER ? place.address().server() : place.address().shareAddress();
+        List<NetworkAddress> removed = new ArrayList<>();
+        NetworkRepository.Data data = networkData;
+        for (SavedLocation location : data.locations()) {
+            boolean same = location.address().key().equals(address.key());
+            boolean onServer = place.kind() == Place.Kind.SERVER && location.address().server().key().equals(address.key());
+            if (same || onServer) {
+                removed.add(location.address());
+                data = data.without(location.address());
+            }
+        }
+        networkData = data;
+        NetworkRepository.Data saved = data;
+        for (NetworkAddress login : removed) {
+            synchronized (sessionPasswords) {
+                sessionPasswords.remove(login.uri());
+            }
+        }
+        if (place.kind() == Place.Kind.SERVER) shareLists.remove(address.key());
+        showNetwork(networkTree.mounts(), false);
+        async(() -> {
+            networkRepository.save(saved);
+            autostart.update(saved.anyAutoConnect());
+            for (NetworkAddress login : removed) if (!login.user().isEmpty()) passwords.delete(login.uri());
+            return null;
+        }, ignored -> view.setStatus(place.name() + " is removed from Network."), view::showError);
+    }
+
+    /** Copy Network Address: {@code smb://mycloudex2ultra/Public/Photos} for a folder on a share, or the entry's own. */
+    public void copyNetworkAddress(Path dir, Place place) {
+        String text = null;
+        if (place != null && place.address() != null && place.isVirtual()) {
+            text = place.address().plainUri();
+        } else if (dir != null && dir.isAbsolute()) {
+            NetworkMount mount = networkTree.mountOf(dir);
+            NetworkAddress address = mount == null ? null : mount.addressOf(dir);
+            if (address != null) text = address.plainUri();
+        }
+        if (text == null) {
+            view.setStatus("This folder is not on a network share.");
+            return;
+        }
+        view.copyToClipboard(text);
+        view.setStatus("Copied " + text + " to the clipboard.");
+    }
+
+    /** Whether the folder lies on a connected network share. */
+    public boolean isOnNetwork(Path dir) {
+        return dir != null && dir.isAbsolute() && networkTree.mountOf(dir) != null;
+    }
+
+    /** The connected share whose folder is {@code dir}, or null. */
+    public Place networkShare(Path dir) {
+        Place place = dir == null ? null : networkTree.find(dir);
+        return place != null && place.kind() == Place.Kind.SHARE ? place : null;
+    }
+
+    // --8<-- [start:connect-to-server]
+    /** File → Connect to Server (Ctrl+K). */
+    public void connectToServer() {
+        connectToServer(null);
+    }
+
+    private void connectToServer(NetworkAddress initial) {
+        ConnectChoice choice = view.askConnect(networkData.recent(), initial);
+        if (choice != null) connectAddress(choice.address(), choice.keep());
+    }
+
+    /**
+     * Connects an address from Connect to Server or the path bar. A server alone (smb://nas) shows its shares in the
+     * tree; a share or folder connects and opens.
+     */
+    void connectAddress(NetworkAddress address, boolean keep) {
+        NetworkRepository.Data data = networkData.withRecent(address);
+        if (keep && data.find(address.isSmb() && address.share().isEmpty() ? address.server() : address.shareAddress()) == null) {
+            NetworkAddress entry = address.isSmb() ? (address.share().isEmpty() ? address.server() : address.shareAddress()) : address;
+            data = data.with(new SavedLocation("", entry, false, true, false));
+        }
+        networkData = data;
+        NetworkRepository.Data toSave = data;
+        executor.execute(() -> {
+            try {
+                networkRepository.save(toSave);
+            } catch (RuntimeException e) {
+                LOG.warn("Cannot save the network servers", e);
+            }
+        });
+        if (address.isSmb() && address.share().isEmpty()) {
+            Place server = new Place(address.serverName(), Place.networkPath(address.server()), Place.Kind.SERVER, null, address.server());
+            showNetwork(networkTree.mounts(), false);
+            listShares(server, null);
+            return;
+        }
+        // The folder below the share opens once the share is connected.
+        String name = address.isSmb() ? address.share() + " on " + address.serverName() : address.serverName();
+        NetworkMount mounted = networkTree.mounts().stream().filter(m -> m.folderOf(address) != null).findFirst().orElse(null);
+        if (mounted != null) {
+            openNetworkFolder(mounted.folderOf(address));
+            return;
+        }
+        connect(address, name, true, null);
+    }
+    // --8<-- [end:connect-to-server]
 
     /** The drive place that stands for {@code dir} while it waits to be mounted, or null. */
     private Place unmountedDrive(Path dir) {
@@ -1222,6 +1708,21 @@ public final class MainPresenter {
         } catch (InvalidPathException e) {
             return null;
         }
+    }
+
+    /** Like {@link #async}, with the failure itself, so a login can be told from other errors. */
+    private <T> void asyncTry(Supplier<T> task, Consumer<T> onSuccess, Consumer<FileOperationException> onError) {
+        executor.execute(() -> {
+            try {
+                T result = task.get();
+                edt.execute(() -> onSuccess.accept(result));
+            } catch (FileOperationException e) {
+                edt.execute(() -> onError.accept(e));
+            } catch (RuntimeException e) {
+                LOG.error("Unexpected failure", e);
+                edt.execute(() -> onError.accept(new FileOperationException("Unexpected error: " + e, e)));
+            }
+        });
     }
 
     private <T> void async(Supplier<T> task, Consumer<T> onSuccess, Consumer<String> onError) {

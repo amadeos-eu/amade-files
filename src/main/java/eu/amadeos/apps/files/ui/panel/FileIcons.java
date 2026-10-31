@@ -23,6 +23,10 @@ final class FileIcons {
     private static final Icon TRASH = new Painted((g, link) -> trash(g), false);
     private static final Icon DISK = new Painted((g, link) -> disk(g), false);
     private static final Icon MEDIA = new Painted((g, link) -> media(g), false);
+    private static final Icon NETWORK = new Painted((g, link) -> network(g), false);
+    private static final Icon SERVER = new Painted((g, link) -> server(g), false);
+    private static final Icon SHARE = new Painted((g, link) -> share(g), false);
+    private static final Icon CONNECT = new Painted((g, link) -> connect(g), false);
 
     private FileIcons() {
     }
@@ -47,6 +51,10 @@ final class FileIcons {
             case TRASH -> TRASH;
             case ROOT -> DISK;
             case MEDIA -> MEDIA;
+            case NETWORK -> NETWORK;
+            case SERVER -> SERVER;
+            case SHARE -> SHARE;
+            case CONNECT -> CONNECT;
         };
     }
 
@@ -159,6 +167,50 @@ final class FileIcons {
         g.setColor(new Color(0x404040));
         g.drawRect(1, 4, 10, 8);
         g.drawRect(11, 6, 4, 4);
+    }
+
+    /** A globe. */
+    private static void network(Graphics2D g) {
+        g.setColor(new Color(0x6FA0C8));
+        g.fillOval(1, 1, 14, 14);
+        g.setColor(new Color(0x5C8A3A));
+        g.fillPolygon(new int[]{4, 8, 7, 4}, new int[]{4, 3, 8, 9}, 4);
+        g.fillPolygon(new int[]{9, 13, 12, 9}, new int[]{7, 8, 12, 13}, 4);
+        g.setColor(new Color(0x404040));
+        g.drawOval(1, 1, 14, 14);
+        g.drawLine(1, 8, 15, 8);
+        g.drawOval(5, 1, 6, 14);
+    }
+
+    /** A NAS box with two drive bays and a light. */
+    private static void server(Graphics2D g) {
+        g.setColor(new Color(0x505860));
+        g.fillRect(3, 1, 10, 14);
+        g.setColor(new Color(0x9AA4AE));
+        g.fillRect(5, 3, 6, 4);
+        g.fillRect(5, 8, 6, 4);
+        g.setColor(new Color(0x3CC060));
+        g.fillRect(6, 13, 2, 1);
+        g.setColor(new Color(0x404040));
+        g.drawRect(3, 1, 10, 14);
+    }
+
+    /** A folder on a network cable. */
+    private static void share(Graphics2D g) {
+        g.setColor(new Color(0xE0B850));
+        g.fillRect(1, 3, 13, 9);
+        g.setColor(new Color(0x404040));
+        g.drawRect(1, 3, 13, 9);
+        g.drawLine(1, 3, 5, 3);
+        g.drawLine(8, 12, 8, 15);
+        g.drawLine(4, 15, 12, 15);
+    }
+
+    /** A green plus. */
+    private static void connect(Graphics2D g) {
+        g.setColor(new Color(0x3A7A3A));
+        g.fillRect(7, 2, 3, 12);
+        g.fillRect(2, 7, 13, 3);
     }
 
     private static void linkArrow(Graphics2D g) {

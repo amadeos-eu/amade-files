@@ -38,6 +38,9 @@ The tree view is the default.
 │   Trash          │                                                    │
 │ ▸ File System    │                                                    │
 │ ▸ USB-STICK      │                                                    │
+│ ▾ Network        │                                                    │
+│   ▸ MyCloudEX2Ultra                                                   │
+│   Connect to Server…                                                  │
 ├──────────────────┴─────────────────┬──────────────────────────────────┤
 │ 2 of 11 selected, 27 KB · 18 GB free │ Copied 2 items. Paste with Ctrl+V. │
 └───────────────────────────────────────────────────────────────────────┘
@@ -45,7 +48,8 @@ The tree view is the default.
 
 - **Folder tree** with Home, the Trash, the File System, every mounted medium below `/media`,
   `/run/media` and `/mnt`, and every USB stick, memory card, external disk and disc that is plugged in
-  (they appear and disappear within a few seconds; see *USB sticks and other drives*). Folders are read
+  (they appear and disappear within a few seconds; see *USB sticks and other drives*), and **Network**
+  with the servers and shares of the network (see *Network drives*). Folders are read
   when they are opened for the first time, so a slow network share never blocks the window. The
   tree follows the folder shown on the right.
 - **Contents** of the chosen folder, without a `..` line. Selection works as in other graphical file
@@ -179,6 +183,37 @@ the live system started from are left out.
   **Safely Remove** unmounts every file system on the stick and switches it off, so that it can be
   pulled out; **Eject** opens the tray of a disc drive (`eject`). Panels that show something on the
   drive go to the home folder first. If a program still uses the drive, Files says so.
+
+## Network drives
+
+*Network* in the tree lists the servers that announce themselves in the network (NAS boxes and Linux
+machines by mDNS, Windows PCs by WS-Discovery), the servers and shares kept from earlier, and
+*Connect to Server…*. Everything goes through gvfs and its `gio` command (packages `gvfs`,
+`gvfs-backends`, `gvfs-fuse`, `wsdd`), as the user, without root or `/etc/fstab`.
+
+- Opening a **Windows (SMB) server** lists its shares, as a guest; a server that shows them to registered
+  users only asks for a login first. Shares that are not connected are in *italics*.
+- Choosing a share **connects** it: with the saved login, otherwise as a guest; if the share wants a
+  password, the log-in dialog asks for *registered user* or *guest*, user name, **workgroup or domain**
+  (default `WORKGROUP`) and password, with *Remember password in the keyring* (gnome-keyring, through
+  `secret-tool`) and *Connect again at login*. User and workgroup go into the address
+  (`smb://WORKGROUP;ralf@nas/ralf`), the password to `gio mount` on its standard input when it asks,
+  never on a command line. A refused password asks again.
+- A connected share is an ordinary folder below `$XDG_RUNTIME_DIR/gvfs` (gvfs-fuse), so copying, drag and
+  drop, the trash and opening files in other programs work as everywhere. The path bar and the title show
+  `MyCloudEX2Ultra › Public` instead of that folder; gvfs shows every file there as `rwx`, so Files does
+  not take them for programs.
+- **Connect to Server…** (File menu, Ctrl+K, or the last entry under Network) takes SMB, NFS, WebDAV,
+  WebDAV over HTTPS, FTP and SFTP, keeps a list of recent servers and can keep the server in the tree.
+  Typing `smb://nas/Public`, `nfs://nas/nfs/Backup`, `davs://cloud.example.org/remote.php/dav` or
+  `\\nas\Public` into the path bar (Ctrl+L) does the same. NFS, WebDAV, FTP and SFTP have no shares:
+  the location itself is the entry.
+- Context menu: *Connect and Open*, *Log In As…*, *Disconnect* (panels on the share go home first),
+  *Copy Network Address* (`smb://mycloudex2ultra/Public/Photos`), *Forget Password*, *Remove from Network…*.
+- Kept servers and shares, logins (without passwords) and recent addresses are in
+  `~/.config/amadeos/files/network.conf`. *Connect again at login* writes
+  `~/.config/autostart/amade-files-network.desktop`, which runs `amade-files --connect-saved` once at
+  login: it connects those shares with the passwords from the keyring, without a window.
 
 ## Archives
 

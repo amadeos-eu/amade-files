@@ -50,6 +50,11 @@
       <li xml:lang="fr">Clés USB, cartes mémoire et disques : monter, démonter, retirer en toute sécurité</li>
       <li xml:lang="es">Memorias USB, tarjetas de memoria y discos: montar, desmontar, quitar de forma segura</li>
       <li xml:lang="it">Chiavette USB, schede di memoria e dischi: monta, smonta, rimuovi in sicurezza</li>
+      <li>Network drives: browse and connect Windows shares (SMB) of NAS boxes and PCs, NFS, WebDAV, FTP and SFTP, with workgroup, user name and password in the keyring</li>
+      <li xml:lang="de">Netzlaufwerke: Windows-Freigaben (SMB) von NAS und PCs, NFS, WebDAV, FTP und SFTP durchsuchen und verbinden, mit Arbeitsgruppe, Benutzername und Passwort im Schlüsselbund</li>
+      <li xml:lang="fr">Lecteurs réseau : parcourir et connecter les partages Windows (SMB) des NAS et des PC, NFS, WebDAV, FTP et SFTP, avec groupe de travail, nom d'utilisateur et mot de passe dans le trousseau</li>
+      <li xml:lang="es">Unidades de red: explorar y conectar recursos compartidos de Windows (SMB) de NAS y PC, NFS, WebDAV, FTP y SFTP, con grupo de trabajo, usuario y contraseña en el llavero</li>
+      <li xml:lang="it">Unità di rete: sfogliare e collegare condivisioni Windows (SMB) di NAS e PC, NFS, WebDAV, FTP e SFTP, con gruppo di lavoro, nome utente e password nel portachiavi</li>
       <li>Extract zip, tar and 7z archives, and compress files into zip or tar archives</li>
       <li xml:lang="de">Zip-, tar- und 7z-Archive entpacken, Dateien als zip oder tar packen</li>
       <li xml:lang="fr">Extraire des archives zip, tar et 7z, et compresser des fichiers en zip ou tar</li>

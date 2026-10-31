@@ -1,23 +1,34 @@
 package eu.amadeos.apps.files.ui.main;
 
 import eu.amadeos.commons.config.XdgDirectories;
+import eu.amadeos.commons.desktop.PasswordStore;
+import eu.amadeos.commons.desktop.SessionPasswordStore;
 import eu.amadeos.apps.files.domain.ClipboardFiles;
+import eu.amadeos.apps.files.domain.Credentials;
+import eu.amadeos.apps.files.domain.DiscoveredServer;
 import eu.amadeos.apps.files.domain.Drive;
 import eu.amadeos.apps.files.domain.DropMode;
 import eu.amadeos.apps.files.domain.FileEntry;
 import eu.amadeos.apps.files.domain.FilePreferences;
+import eu.amadeos.apps.files.domain.NetworkAddress;
+import eu.amadeos.apps.files.domain.NetworkMount;
 import eu.amadeos.apps.files.domain.Place;
 import eu.amadeos.apps.files.domain.Progress;
 import eu.amadeos.apps.files.domain.Resolution;
+import eu.amadeos.apps.files.domain.SavedLocation;
 import eu.amadeos.apps.files.domain.Side;
 import eu.amadeos.apps.files.domain.SortKey;
 import eu.amadeos.apps.files.domain.SortOrder;
 import eu.amadeos.apps.files.domain.ViewMode;
+import eu.amadeos.apps.files.repository.NetworkRepository;
 import eu.amadeos.apps.files.repository.PreferencesRepository;
 import eu.amadeos.apps.files.service.ArchiveService;
 import eu.amadeos.apps.files.service.DriveService;
 import eu.amadeos.apps.files.service.FileOperations;
 import eu.amadeos.apps.files.service.FileSystemService;
+import eu.amadeos.apps.files.service.NetworkAutostart;
+import eu.amadeos.apps.files.service.NetworkLoginException;
+import eu.amadeos.apps.files.service.NetworkService;
 import eu.amadeos.apps.files.service.Opener;
 import eu.amadeos.apps.files.service.TrashService;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,6 +66,10 @@ class MainPresenterTest {
     private final PreferencesRepository preferences = mock(PreferencesRepository.class);
     private final Opener opener = mock(Opener.class);
     private final DriveService drives = mock(DriveService.class);
+    private final NetworkService network = mock(NetworkService.class);
+    private final NetworkRepository networkRepository = mock(NetworkRepository.class);
+    private final PasswordStore passwords = new SessionPasswordStore();
+    private final NetworkAutostart autostart = mock(NetworkAutostart.class);
     private TrashService trash;
     private MainPresenter presenter;
 
@@ -70,8 +85,12 @@ class MainPresenterTest {
         when(preferences.load()).thenReturn(PANELS.withDirs(home, other));
         trash = new TrashService(new XdgDirectories(
                 Map.of("XDG_DATA_HOME", dir.resolve("data").toString()), home.toString()));
+        when(network.mounts()).thenReturn(List.of());
+        when(network.discover()).thenReturn(List.of());
+        when(networkRepository.load()).thenReturn(NetworkRepository.Data.EMPTY);
         presenter = new MainPresenter(view, new FileSystemService(), new FileOperations(), trash,
-                new ArchiveService(), drives, opener, preferences, new DirectExecutorService(), Runnable::run, home);
+                new ArchiveService(), drives, opener, preferences, network, networkRepository, passwords, autostart,
+                new DirectExecutorService(), Runnable::run, home);
     }
 
     private FileEntry entry(Side side, String name) {
@@ -565,7 +584,7 @@ class MainPresenterTest {
             return mount;
         });
         presenter.start(List.of());
-        Place place = view.places.getLast();
+        Place place = lastDrive();
         assertTrue(place.needsMount());
         assertEquals("STICK", place.name());
         // A stick that was there before Files started is not mounted on its own.
@@ -576,8 +595,8 @@ class MainPresenterTest {
         verify(drives).mount(STICK);
         assertEquals(mount, view.dirs.get(Side.LEFT));
         assertEquals(List.of("photo.jpg"), names(Side.LEFT));
-        assertEquals(mount, view.places.getLast().path());
-        assertFalse(view.places.getLast().needsMount());
+        assertEquals(mount, lastDrive().path());
+        assertFalse(lastDrive().needsMount());
     }
 
     @Test
@@ -602,12 +621,107 @@ class MainPresenterTest {
             return null;
         }).when(drives).eject(mounted);
 
-        presenter.eject(view.places.getLast());
+        presenter.eject(lastDrive());
         assertEquals(home, view.dirs.get(Side.LEFT));
         assertEquals("STICK can be removed now.", view.message);
-        assertTrue(view.places.getLast().needsMount());
+        assertTrue(lastDrive().needsMount());
         presenter.refreshPlaces();
         verify(drives, never()).mount(any());
+    }
+
+    private Place lastDrive() {
+        return view.places.stream().filter(p -> p.kind() == Place.Kind.MEDIA).reduce((a, b) -> b).orElseThrow();
+    }
+
+    // ---- network ------------------------------------------------------------------------------------------------
+
+    private static final NetworkAddress NAS = NetworkAddress.parse("smb://mycloudex2ultra.local");
+
+    private Place networkPlace(Path parent, String name) {
+        return view.networkPlaces.get(parent).stream().filter(p -> p.name().equals(name)).findFirst().orElseThrow();
+    }
+
+    @Test
+    void networkListsTheServersAndTheirSharesAndConnectsAGuestShare() throws IOException {
+        Path folder = Files.createDirectories(dir.resolve("gvfs/smb-share:server=mycloudex2ultra.local,share=public"));
+        Files.writeString(folder.resolve("photo.jpg"), "jpg");
+        when(preferences.load()).thenReturn(FilePreferences.DEFAULTS.withDirs(home, other));
+        when(network.discover()).thenReturn(List.of(new DiscoveredServer("MyCloudEX2Ultra", NAS)));
+        when(network.shares(any(), any())).thenReturn(List.of("Public", "ralf"));
+        presenter.start(List.of());
+        assertEquals(Place.Kind.NETWORK, view.places.getLast().kind());
+
+        Place server = networkPlace(Place.NETWORK_PATH, "MyCloudEX2Ultra");
+        presenter.expandFolder(server.path());
+        Place share = networkPlace(server.path(), "Public");
+        assertTrue(share.needsConnect());
+
+        NetworkAddress publicShare = NAS.withPath("Public");
+        when(network.connect(publicShare, null)).thenAnswer(i -> {
+            when(network.mounts()).thenReturn(List.of(new NetworkMount(publicShare, folder)));
+            return folder;
+        });
+        presenter.folderSelected(share.path());
+        assertEquals(folder, view.dirs.get(Side.LEFT));
+        assertEquals(List.of("photo.jpg"), names(Side.LEFT));
+        assertEquals(folder, networkPlace(server.path(), "Public").path());
+        assertEquals("MyCloudEX2Ultra › Public", view.folderNames.get(folder));
+    }
+
+    @Test
+    void aShareThatWantsAPasswordAsksAndRemembersTheLogin() throws IOException {
+        Path folder = Files.createDirectories(dir.resolve("gvfs/ralf"));
+        when(preferences.load()).thenReturn(FilePreferences.DEFAULTS.withDirs(home, other));
+        when(network.discover()).thenReturn(List.of(new DiscoveredServer("MyCloudEX2Ultra", NAS)));
+        when(network.shares(any(), any())).thenReturn(List.of("ralf"));
+        NetworkAddress share = NAS.withPath("ralf");
+        Credentials login = Credentials.of("ralf", "WORKGROUP", "secret12");
+        when(network.connect(share, null)).thenThrow(new NetworkLoginException("the share ralf wants a password.", false));
+        when(network.connect(share, Credentials.of("ralf", "WORKGROUP", "wrong")))
+                .thenThrow(new NetworkLoginException("The password was not accepted.", true));
+        when(network.connect(share, login)).thenReturn(folder);
+        view.logins.add(new LoginChoice(Credentials.of("ralf", "WORKGROUP", "wrong"), true, true));
+        view.logins.add(new LoginChoice(login, true, true));
+        presenter.start(List.of());
+        Place server = networkPlace(Place.NETWORK_PATH, "MyCloudEX2Ultra");
+        presenter.expandFolder(server.path());
+
+        presenter.folderSelected(networkPlace(server.path(), "ralf").path());
+        assertEquals(2, view.loginRequests.size());
+        assertTrue(view.loginRequests.getLast().message().contains("not accepted"));
+        assertEquals(folder, view.dirs.get(Side.LEFT));
+        assertEquals("secret12", passwords.lookup("smb://WORKGROUP;ralf@mycloudex2ultra.local/ralf").orElseThrow());
+        verify(networkRepository).save(argThat(d -> d.locations().size() == 1 && d.locations().getFirst().autoConnect()
+                && d.locations().getFirst().address().user().equals("ralf")));
+        verify(autostart).update(true);
+    }
+
+    @Test
+    void aSavedLoginConnectsWithThePasswordFromTheKeyring() throws IOException {
+        Path folder = Files.createDirectories(dir.resolve("gvfs/ralf"));
+        NetworkAddress saved = NetworkAddress.parse("smb://WORKGROUP;ralf@mycloudex2ultra.local/ralf");
+        when(networkRepository.load()).thenReturn(new NetworkRepository.Data(
+                List.of(new SavedLocation("", saved, false, true, false)), List.of()));
+        passwords.store(saved.uri(), "", "secret12");
+        when(preferences.load()).thenReturn(FilePreferences.DEFAULTS.withDirs(home, other));
+        when(network.connect(saved, Credentials.of("ralf", "WORKGROUP", "secret12"))).thenReturn(folder);
+        presenter.start(List.of());
+        Place server = networkPlace(Place.NETWORK_PATH, "mycloudex2ultra");
+        presenter.folderSelected(networkPlace(server.path(), "ralf").path());
+        assertTrue(view.loginRequests.isEmpty());
+        assertEquals(folder, view.dirs.get(Side.LEFT));
+    }
+
+    @Test
+    void anAddressTypedIntoThePathBarConnects() throws IOException {
+        Path folder = Files.createDirectories(dir.resolve("gvfs/public/Photos"));
+        when(preferences.load()).thenReturn(FilePreferences.DEFAULTS.withDirs(home, other));
+        NetworkAddress photos = NetworkAddress.parse("smb://nas/Public/Photos");
+        when(network.connect(photos, null)).thenReturn(folder);
+        presenter.start(List.of());
+        presenter.goTo(Side.LEFT, "smb://nas/Public/Photos");
+        assertEquals(folder, view.dirs.get(Side.LEFT));
+        verify(networkRepository).save(argThat(d -> d.recent().equals(List.of(NetworkAddress.parse("smb://nas/Public/Photos")))));
     }
 
     private static final class FakeView implements MainView {
@@ -742,6 +856,33 @@ class MainPresenterTest {
         @Override
         public void showFolders(Path dir, List<Path> list) {
             folders.put(dir, list);
+        }
+
+        final Map<Path, List<Place>> networkPlaces = new HashMap<>();
+        Map<Path, String> folderNames = Map.of();
+        final Deque<LoginChoice> logins = new ArrayDeque<>();
+        final List<LoginRequest> loginRequests = new ArrayList<>();
+        ConnectChoice connectChoice;
+
+        @Override
+        public void showPlaces(Path parent, List<Place> list, boolean complete) {
+            networkPlaces.put(parent, List.copyOf(list));
+        }
+
+        @Override
+        public void setFolderNames(Map<Path, String> names) {
+            folderNames = names;
+        }
+
+        @Override
+        public LoginChoice askLogin(LoginRequest request) {
+            loginRequests.add(request);
+            return logins.poll();
+        }
+
+        @Override
+        public ConnectChoice askConnect(List<NetworkAddress> recent, NetworkAddress initial) {
+            return connectChoice;
         }
 
         @Override
