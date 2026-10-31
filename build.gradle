@@ -30,7 +30,11 @@ repositories {
 dependencies {
     // Theme, Motif look, start-up and XDG helpers shared by all amadeOS applications.
     // With ../amade-commons checked out, settings.gradle builds that checkout instead (composite build).
-    implementation 'com.github.amadeos-eu:amade-commons:fac730fed3'
+    implementation 'com.github.amadeos-eu:amade-commons:v1.0.0'
+
+    // Zip, tar, 7z and gzip/bzip2/xz for Extract and Compress, in pure Java; xz is needed for .xz and .7z.
+    implementation 'org.apache.commons:commons-compress:1.27.1'
+    implementation 'org.tukaani:xz:1.10'
 
     runtimeOnly 'ch.qos.logback:logback-classic:1.5.18'
 
@@ -122,7 +126,7 @@ Section: utils
 Priority: optional
 Architecture: all
 Depends: openjdk-25-jre | java-runtime (>= 25)
-Recommends: xdg-utils
+Recommends: xdg-utils, udisks2, eject
 Maintainer: amadeOS Project <developers@datazuul.com>
 Description: CDE-style two-panel file manager for amadeOS
  A Motif/CDE-styled file manager for the amadeOS desktop with two

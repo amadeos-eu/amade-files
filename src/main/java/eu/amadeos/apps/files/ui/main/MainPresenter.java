@@ -4,6 +4,7 @@ import com.google.inject.Inject;
 import eu.amadeos.commons.desktop.DesktopLauncher;
 import eu.amadeos.commons.swing.EdtExecutor;
 import eu.amadeos.apps.files.domain.ClipboardFiles;
+import eu.amadeos.apps.files.domain.Drive;
 import eu.amadeos.apps.files.domain.DropMode;
 import eu.amadeos.apps.files.domain.FileEntry;
 import eu.amadeos.apps.files.domain.FilePreferences;
@@ -15,6 +16,8 @@ import eu.amadeos.apps.files.domain.SortKey;
 import eu.amadeos.apps.files.domain.SortOrder;
 import eu.amadeos.apps.files.domain.ViewMode;
 import eu.amadeos.apps.files.repository.PreferencesRepository;
+import eu.amadeos.apps.files.service.ArchiveService;
+import eu.amadeos.apps.files.service.DriveService;
 import eu.amadeos.apps.files.service.FileOperationException;
 import eu.amadeos.apps.files.service.FileOperations;
 import eu.amadeos.apps.files.service.FileOperations.Summary;
@@ -34,12 +37,15 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -61,6 +67,8 @@ public final class MainPresenter {
     private final FileSystemService fileSystem;
     private final FileOperations operations;
     private final TrashService trash;
+    private final ArchiveService archives;
+    private final DriveService drives;
     private final Opener opener;
     private final PreferencesRepository preferencesRepository;
     private final ExecutorService executor;
@@ -74,6 +82,14 @@ public final class MainPresenter {
     /** The folder chosen in the tree while the tree has the keyboard focus; null otherwise. */
     private Path treeTarget;
     private boolean busy;
+    /** Runs on the EDT after the next long operation, once the panels are read again. */
+    private Runnable afterOperation;
+    /** Devices seen in the last look at the drives; null before the first look. */
+    private Set<String> knownDevices;
+    /** Devices being mounted, unmounted or ejected right now. */
+    private final Set<String> changingDrives = new HashSet<>();
+    /** Devices the user unmounted: not mounted again on their own while they stay plugged in. */
+    private final Set<String> unmountedByUser = new HashSet<>();
 
     /** What one panel shows. */
     private static final class PanelState {
@@ -96,19 +112,21 @@ public final class MainPresenter {
 
     @Inject
     public MainPresenter(MainView view, FileSystemService fileSystem, FileOperations operations, TrashService trash,
-                         Opener opener, PreferencesRepository preferencesRepository, ExecutorService executor,
-                         EdtExecutor edt) {
-        this(view, fileSystem, operations, trash, opener, preferencesRepository, executor, edt,
+                         ArchiveService archives, DriveService drives, Opener opener,
+                         PreferencesRepository preferencesRepository, ExecutorService executor, EdtExecutor edt) {
+        this(view, fileSystem, operations, trash, archives, drives, opener, preferencesRepository, executor, edt,
                 Path.of(System.getProperty("user.home")));
     }
 
     MainPresenter(MainView view, FileSystemService fileSystem, FileOperations operations, TrashService trash,
-                  Opener opener, PreferencesRepository preferencesRepository, ExecutorService executor,
-                  Executor edt, Path home) {
+                  ArchiveService archives, DriveService drives, Opener opener,
+                  PreferencesRepository preferencesRepository, ExecutorService executor, Executor edt, Path home) {
         this.view = view;
         this.fileSystem = fileSystem;
         this.operations = operations;
         this.trash = trash;
+        this.archives = archives;
+        this.drives = drives;
         this.opener = opener;
         this.preferencesRepository = preferencesRepository;
         this.executor = executor;
@@ -349,6 +367,11 @@ public final class MainPresenter {
     }
 
     private void openFile(FileEntry entry) {
+        // amadeOS has no archive program: opening an archive unpacks it next to itself.
+        if (ArchiveService.isArchive(entry.name())) {
+            extract(List.of(entry.path()), null);
+            return;
+        }
         if (canRunProgram(entry) && !view.confirm("Open", entry.name() + " can run a program.\nOpen it anyway?")) {
             return;
         }
@@ -407,6 +430,113 @@ public final class MainPresenter {
                     return (move ? "Moved " : "Copied ") + Formats.count(summary.done(), "file") + " to " + target
                             + (summary.skipped() > 0 ? ", skipped " + summary.skipped() : "") + ".";
                 });
+    }
+
+    // ---- archives -------------------------------------------------------------------------------
+
+    // --8<-- [start:extract]
+    /** Extract Here: each marked archive into its own folder. */
+    public void extractHere() {
+        List<Path> chosen = archivesIn(targets(active));
+        if (chosen.isEmpty()) {
+            view.setStatus("Select a zip, tar or 7z archive to extract.");
+            return;
+        }
+        extract(chosen, null);
+    }
+
+    /** Extract To…: the marked archives into a folder the user types. */
+    public void extractTo() {
+        List<Path> chosen = archivesIn(targets(active));
+        if (chosen.isEmpty()) {
+            view.setStatus("Select a zip, tar or 7z archive to extract.");
+            return;
+        }
+        Path base = panels.get(active).dir;
+        String answer = view.askText("Extract", "Extract " + describePaths(chosen) + " to:",
+                base == null ? "" : base.toString());
+        if (answer == null) return;
+        Path target = toPath(answer, base);
+        if (target == null || !Files.isDirectory(target)) {
+            view.showError("\"" + answer + "\" is not a folder.");
+            return;
+        }
+        extract(chosen, target);
+    }
+
+    /** @param target the folder to unpack into, null for the folder of each archive */
+    private void extract(List<Path> chosen, Path target) {
+        if (chosen.stream().anyMatch(p -> p.getParent() != null && trash.isTrashFiles(p.getParent()))) {
+            view.setStatus("Archives in the trash cannot be extracted; restore them first.");
+            return;
+        }
+        AtomicReference<Path> last = new AtomicReference<>();
+        Side side = active;
+        afterOperation = () -> showResult(side, last.get());
+        runOperation("Extracting", listener -> {
+            int files = 0;
+            int skipped = 0;
+            for (Path archive : chosen) {
+                ArchiveService.Result result = archives.extract(archive,
+                        target != null ? target : archive.getParent(), listener);
+                if (result.result() != null) last.set(result.result());
+                files += result.files();
+                skipped += result.skipped();
+            }
+            return new Summary(files, skipped);
+        }, summary -> "Extracted " + Formats.count(summary.done(), "file")
+                + (last.get() != null ? " to " + last.get().getFileName() : "")
+                + (summary.skipped() > 0 ? ", left out " + summary.skipped() + " unsafe or special entries" : "") + ".");
+    }
+    // --8<-- [end:extract]
+
+    // --8<-- [start:compress]
+    /** Compress…: the marked files and folders into a new archive next to them. */
+    public void compress() {
+        List<FileEntry> items = targets(active);
+        if (items.isEmpty()) {
+            view.setStatus("Nothing selected.");
+            return;
+        }
+        if (items.stream().anyMatch(e -> e.path().getParent() == null || trash.isTrashFiles(e.path()))) {
+            view.setStatus(placeName(items.getFirst().path()) + " cannot be compressed.");
+            return;
+        }
+        Path dir = items.getFirst().path().getParent();
+        if (dir == null || trash.isTrashFiles(dir)) {
+            view.setStatus("Files in the trash cannot be compressed.");
+            return;
+        }
+        // Into the folder of the items; a USB stick's own top folder is no place for it, so home.
+        if (!Files.isWritable(dir)) dir = home;
+        String suggestion = items.size() == 1 ? ArchiveService.baseName(items.getFirst().name())
+                : dir.getFileName() == null ? "Archive" : dir.getFileName().toString();
+        ArchiveChoice choice = view.askArchive("Compress " + describe(items) + " into:", suggestion);
+        if (choice == null) return;
+        List<Path> paths = items.stream().map(FileEntry::path).toList();
+        Path targetDir = dir;
+        AtomicReference<Path> created = new AtomicReference<>();
+        Side side = active;
+        afterOperation = () -> showResult(side, created.get());
+        runOperation("Compressing", listener -> {
+            ArchiveService.Result result = archives.compress(paths, targetDir, choice.name(), choice.format(), listener);
+            created.set(result.result());
+            return new Summary(result.files(), result.skipped());
+        }, summary -> "Created " + created.get().getFileName() + " with " + Formats.count(summary.done(), "file")
+                + (summary.skipped() > 0 ? ", left out " + summary.skipped() + " special files" : "") + ".");
+    }
+    // --8<-- [end:compress]
+
+    /** Puts the cursor on a new archive or extracted folder if the panel shows its folder. */
+    private void showResult(Side side, Path result) {
+        if (result == null || result.getParent() == null) return;
+        PanelState panel = panels.get(side);
+        if (result.getParent().equals(panel.dir)) load(side, panel.dir, result.getFileName().toString());
+    }
+
+    private static List<Path> archivesIn(List<FileEntry> items) {
+        return items.stream().filter(e -> e.kind() == FileEntry.Kind.FILE && ArchiveService.isArchive(e.name()))
+                .map(FileEntry::path).toList();
     }
 
     /** F7. */
@@ -657,6 +787,7 @@ public final class MainPresenter {
      */
     private void runOperation(String title, Function<OperationListener, Summary> work, Function<Summary, String> done) {
         if (busy) {
+            afterOperation = null;
             view.showError("Another file operation is still running.");
             return;
         }
@@ -709,6 +840,9 @@ public final class MainPresenter {
                 if (finalError != null) view.showError(finalError);
                 else view.setStatus(finalMessage);
                 refresh();
+                Runnable after = afterOperation;
+                afterOperation = null;
+                if (after != null && finalError == null) after.run();
             });
         });
     }
@@ -919,6 +1053,11 @@ public final class MainPresenter {
 
     /** A folder was chosen in the tree: the contents side shows it, and the commands work on it. */
     public void folderSelected(Path dir) {
+        Place drive = unmountedDrive(dir);
+        if (drive != null) {
+            mount(drive, true);
+            return;
+        }
         treeTarget = dir;
         if (active != Side.LEFT) {
             active = Side.LEFT;
@@ -930,23 +1069,132 @@ public final class MainPresenter {
 
     /** The tree got the keyboard focus. */
     public void treeFocused(Path dir) {
-        if (dir != null) treeTarget = dir;
+        // A drive that is not mounted yet has no folder for the commands to work on.
+        if (dir != null) treeTarget = unmountedDrive(dir) == null ? dir : null;
     }
 
     /** A folder of the tree is opened for the first time, or read again: its sub-folders. */
     public void expandFolder(Path dir) {
+        Place drive = unmountedDrive(dir);
+        if (drive != null) {
+            view.showFolders(dir, List.of());
+            mount(drive, false);
+            return;
+        }
         boolean showHidden = preferences.showHidden();
         async(() -> fileSystem.folders(dir, showHidden), folders -> view.showFolders(dir, folders),
                 error -> view.showFolders(dir, List.of()));
     }
 
-    /** Home, trash, file system and the mounted media; called again now and then for USB sticks. */
+    // --8<-- [start:refresh-places]
+    /**
+     * Home, trash, file system and the drives; called again every few seconds while the tree shows. A
+     * USB stick plugged in while Files is open is mounted at once; one that was there before Files started,
+     * or that the user unmounted, waits until it is chosen.
+     */
     public void refreshPlaces() {
-        async(() -> fileSystem.places(home, trash.homeTrashFiles()), found -> {
+        async(() -> DriveService.withDrives(fileSystem.places(home, trash.homeTrashFiles()), drives.drives()), found -> {
+            Set<String> devices = new HashSet<>();
+            for (Place place : found) if (place.drive() != null) devices.add(place.drive().device());
+            unmountedByUser.retainAll(devices);
+            if (knownDevices != null) {
+                for (Place place : found) {
+                    if (place.needsMount() && !knownDevices.contains(place.drive().device())
+                            && !unmountedByUser.contains(place.drive().device())) {
+                        mount(place, false);
+                    }
+                }
+            }
+            knownDevices = devices;
             if (found.equals(places)) return;
             places = found;
             view.setPlaces(found);
         }, error -> LOG.debug("Cannot read the places: {}", error));
+    }
+    // --8<-- [end:refresh-places]
+
+    // ---- drives ---------------------------------------------------------------------------------
+
+    private record Mounted(Path mountPoint, List<Place> places) {
+    }
+
+    // --8<-- [start:mount]
+    /** Mounts a drive; {@code open} shows it on the contents side afterwards. */
+    public void mount(Place place, boolean open) {
+        Drive drive = place.drive();
+        if (drive == null || !changingDrives.add(drive.device())) return;
+        unmountedByUser.remove(drive.device());
+        view.setStatus("Mounting " + drive.name() + " …");
+        async(() -> {
+            Path mountPoint = drives.mount(drive);
+            return new Mounted(mountPoint, DriveService.withDrives(fileSystem.places(home, trash.homeTrashFiles()),
+                    drives.drives()));
+        }, mounted -> {
+            changingDrives.remove(drive.device());
+            places = mounted.places();
+            view.setPlaces(places);
+            view.setStatus(drive.name() + " is ready.");
+            if (open) {
+                if (active != Side.LEFT && treeView()) panelActivated(Side.LEFT);
+                treeTarget = null;
+                load(treeView() ? Side.LEFT : active, mounted.mountPoint(), null);
+            }
+        }, error -> {
+            changingDrives.remove(drive.device());
+            view.showError(error);
+        });
+    }
+    // --8<-- [end:mount]
+
+    /** Unmount: the drive stays plugged in, but can be pulled out. */
+    public void unmount(Place place) {
+        changeDrive(place, false);
+    }
+
+    /** Eject: unmounts everything on the drive and switches it off or opens the tray. */
+    public void eject(Place place) {
+        changeDrive(place, true);
+    }
+
+    // --8<-- [start:eject]
+    private void changeDrive(Place place, boolean eject) {
+        Drive drive = place.drive();
+        if (drive == null || !changingDrives.add(drive.device())) return;
+        if (busy && !view.confirm(eject ? "Eject" : "Unmount",
+                "A file operation is still running. " + (eject ? "Eject" : "Unmount") + " " + drive.name() + " anyway?")) {
+            changingDrives.remove(drive.device());
+            return;
+        }
+        // Panels that show something on the drive go home first.
+        if (drive.mounted()) {
+            for (Side side : Side.values()) {
+                PanelState panel = panels.get(side);
+                if (panel.dir != null && panel.dir.startsWith(drive.mountPoint())) load(side, home, null);
+            }
+            if (treeTarget != null && treeTarget.startsWith(drive.mountPoint())) treeTarget = null;
+        }
+        unmountedByUser.add(drive.device());
+        view.setStatus((eject ? "Ejecting " : "Unmounting ") + drive.name() + " …");
+        async(() -> {
+            if (eject) drives.eject(drive);
+            else drives.unmount(drive);
+            return DriveService.withDrives(fileSystem.places(home, trash.homeTrashFiles()), drives.drives());
+        }, found -> {
+            changingDrives.remove(drive.device());
+            places = found;
+            view.setPlaces(found);
+            view.setStatus(drive.name() + (drive.optical() && eject ? " is ejected." : " can be removed now."));
+        }, error -> {
+            changingDrives.remove(drive.device());
+            unmountedByUser.remove(drive.device());
+            view.showError(error);
+        });
+    }
+    // --8<-- [end:eject]
+
+    /** The drive place that stands for {@code dir} while it waits to be mounted, or null. */
+    private Place unmountedDrive(Path dir) {
+        return places.stream().filter(p -> p.needsMount() && p.path().equals(dir)).findFirst().orElse(null);
     }
 
     /** The folder of the active panel, for the window title. */

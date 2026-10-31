@@ -4,6 +4,7 @@ import eu.amadeos.apps.files.domain.ClipboardFiles;
 import eu.amadeos.apps.files.domain.FileEntry;
 import eu.amadeos.apps.files.domain.Place;
 import eu.amadeos.apps.files.domain.Side;
+import eu.amadeos.apps.files.service.ArchiveService;
 
 import javax.swing.*;
 import java.awt.*;
@@ -48,6 +49,11 @@ final class ContextMenus {
             menu.add(item("View", key(KeyEvent.VK_F3, 0), presenter::view));
             menu.add(item("Edit in Text Editor", key(KeyEvent.VK_F4, 0), presenter::edit));
         }
+        if (!folder && ArchiveService.isArchive(entry.name())) {
+            menu.addSeparator();
+            menu.add(item("Extract Here", null, presenter::extractHere));
+            menu.add(item("Extract To…", null, presenter::extractTo));
+        }
         menu.addSeparator();
         addClipboard(menu, true);
         JMenuItem paste = folder ? item("Paste into Folder", null, () -> presenter.pasteInto(entry.path()))
@@ -56,6 +62,7 @@ final class ContextMenus {
         menu.add(paste);
         menu.addSeparator();
         menu.add(item("Rename…", key(KeyEvent.VK_F2, 0), presenter::rename));
+        menu.add(item("Compress…", null, presenter::compress));
         menu.add(item("Move to Trash", key(KeyEvent.VK_DELETE, 0), presenter::moveToTrash));
         menu.add(item("Delete Permanently…", key(KeyEvent.VK_DELETE, InputEvent.SHIFT_DOWN_MASK), presenter::deletePermanently));
         menu.addSeparator();
@@ -97,6 +104,17 @@ final class ContextMenus {
             menu.add(item("Copy Path", null, () -> presenter.copyPath(dir)));
             return menu;
         }
+        // --8<-- [start:drive-menu]
+        if (place != null && place.needsMount()) {
+            JMenuItem mount = item("Mount and Open", null, () -> presenter.mount(place, true));
+            mount.setFont(mount.getFont().deriveFont(Font.BOLD));
+            menu.add(mount);
+            menu.add(item("Mount", null, () -> presenter.mount(place, false)));
+            menu.addSeparator();
+            menu.add(item(ejectText(place), null, () -> presenter.eject(place)));
+            return menu;
+        }
+        // --8<-- [end:drive-menu]
         menu.add(item("Open in Two Panels", null, () -> presenter.openInPanels(dir)));
         menu.addSeparator();
         menu.add(item("New Folder…", key(KeyEvent.VK_F7, 0), presenter::newFolder));
@@ -107,11 +125,22 @@ final class ContextMenus {
         boolean movable = place == null;
         addClipboard(menu, movable);
         menu.add(enabled(item("Rename…", key(KeyEvent.VK_F2, 0), presenter::rename), movable));
+        menu.add(enabled(item("Compress…", null, presenter::compress), place == null || place.kind() != Place.Kind.ROOT));
         menu.add(enabled(item("Move to Trash", key(KeyEvent.VK_DELETE, 0), presenter::moveToTrash), movable));
         menu.addSeparator();
         menu.add(item("Copy Path", key(KeyEvent.VK_C, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK),
                 () -> presenter.copyPath(dir)));
+        if (place != null && place.drive() != null) {
+            menu.addSeparator();
+            menu.add(item("Unmount", null, () -> presenter.unmount(place)));
+            menu.add(item(ejectText(place), null, () -> presenter.eject(place)));
+        }
         return menu;
+    }
+
+    /** Discs come out of the tray; USB drives are switched off so they can be pulled out. */
+    private static String ejectText(Place place) {
+        return place.drive().optical() ? "Eject" : "Safely Remove";
     }
 
     private void addClipboard(JPopupMenu menu, boolean canCut) {

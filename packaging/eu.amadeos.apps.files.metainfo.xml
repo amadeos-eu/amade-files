@@ -45,6 +45,16 @@
       <li xml:lang="fr">Marquer des fichiers avec Inser ou Espace, indépendamment du curseur</li>
       <li xml:lang="es">Marcar archivos con Insert o Espacio, independientemente del cursor</li>
       <li xml:lang="it">Contrassegnare i file con Ins o Spazio, indipendentemente dal cursore</li>
+      <li>USB sticks, memory cards and discs: mount, unmount, safely remove</li>
+      <li xml:lang="de">USB-Sticks, Speicherkarten und Discs: einhängen, aushängen, sicher entfernen</li>
+      <li xml:lang="fr">Clés USB, cartes mémoire et disques : monter, démonter, retirer en toute sécurité</li>
+      <li xml:lang="es">Memorias USB, tarjetas de memoria y discos: montar, desmontar, quitar de forma segura</li>
+      <li xml:lang="it">Chiavette USB, schede di memoria e dischi: monta, smonta, rimuovi in sicurezza</li>
+      <li>Extract zip, tar and 7z archives, and compress files into zip or tar archives</li>
+      <li xml:lang="de">Zip-, tar- und 7z-Archive entpacken, Dateien als zip oder tar packen</li>
+      <li xml:lang="fr">Extraire des archives zip, tar et 7z, et compresser des fichiers en zip ou tar</li>
+      <li xml:lang="es">Extraer archivos zip, tar y 7z, y comprimir archivos en zip o tar</li>
+      <li xml:lang="it">Estrarre archivi zip, tar e 7z, e comprimere file in zip o tar</li>
       <li>Opens files with their default application</li>
       <li xml:lang="de">Öffnet Dateien mit ihrem Standardprogramm</li>
       <li xml:lang="fr">Ouvre les fichiers avec leur application par défaut</li>
