@@ -30,7 +30,7 @@ repositories {
 dependencies {
     // Theme, Motif look, start-up and XDG helpers shared by all amadeOS applications.
     // With ../amade-commons checked out, settings.gradle builds that checkout instead (composite build).
-    implementation 'com.github.amadeos-eu:amade-commons:fac730fed3'
+    implementation 'com.github.amadeos-eu:amade-commons:v1.0.0'
 
     // Zip, tar, 7z and gzip/bzip2/xz for Extract and Compress, in pure Java; xz is needed for .xz and .7z.
     implementation 'org.apache.commons:commons-compress:1.27.1'
