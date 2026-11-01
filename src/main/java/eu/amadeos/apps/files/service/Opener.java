@@ -23,6 +23,8 @@ public class Opener {
     private static final Logger LOG = LoggerFactory.getLogger(Opener.class);
     static final String EDITOR = "amade-pad";
     static final String XDG_OPEN = "xdg-open";
+    /** The disk tool of amadeOS (amadeos-system), which formats a drive. */
+    static final String DISKS = "amadeos-disks";
     /** Bytes read to decide whether a file is text. */
     static final int SAMPLE = 8192;
 
@@ -69,19 +71,39 @@ public class Opener {
         }
     }
 
+    /** True when the disk tool is installed, so the drive menu can offer Format…. */
+    public boolean canFormat() {
+        return findOnPath(DISKS, searchPath).isPresent();
+    }
+
+    /** Opens the disk tool with its format dialog for the whole drive, such as {@code /dev/sdb}. */
+    public void format(String disk) {
+        Path disks = findOnPath(DISKS, searchPath)
+                .orElseThrow(() -> new FileOperationException("Cannot format: the program Disks (amadeos-disks) is not installed."));
+        try {
+            run(disks.toString(), "--format", disk);
+        } catch (IOException e) {
+            throw new FileOperationException("Cannot start Disks: " + e.getMessage(), e);
+        }
+    }
+
     // --8<-- [start:start]
     private static void start(Path editor, Path file) {
         try {
-            // The window manager shows the busy cursor until the editor's window appears.
-            LaunchFeedback.announce();
-            new ProcessBuilder(editor.toString(), file.toString())
-                    .redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")))
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .redirectErrorStream(true)
-                    .start();
+            run(editor.toString(), file.toString());
         } catch (IOException e) {
             throw new FileOperationException("Cannot start the Text Editor: " + e.getMessage(), e);
         }
+    }
+
+    private static void run(String... command) throws IOException {
+        // The window manager shows the busy cursor until the program's window appears.
+        LaunchFeedback.announce();
+        new ProcessBuilder(command)
+                .redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")))
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectErrorStream(true)
+                .start();
     }
     // --8<-- [end:start]
 

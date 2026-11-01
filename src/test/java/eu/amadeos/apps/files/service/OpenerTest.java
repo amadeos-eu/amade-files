@@ -73,4 +73,23 @@ class OpenerTest {
         assertFalse(Opener.isPlainText(Files.write(dir.resolve("ctrl"), new byte[]{1, 2, 3, 4, 5, 'a'})));
         assertFalse(Opener.isPlainText(dir.resolve("missing")));
     }
+
+    @Test
+    void formatStartsDisksWithTheWholeDrive() throws Exception {
+        Path bin = Files.createDirectories(dir.resolve("bin"));
+        Path disks = Files.writeString(bin.resolve(Opener.DISKS),
+                "#!/bin/sh\nprintf '%s %s' \"$1\" \"$2\" > \"" + dir.resolve("opened") + "\"\n");
+        Files.setPosixFilePermissions(disks, PosixFilePermissions.fromString("rwxr-xr-x"));
+        Opener opener = new Opener(desktop, bin.toString());
+        assertTrue(opener.canFormat());
+        opener.format("/dev/sdb");
+        assertEquals("--format /dev/sdb", waitForOpened());
+    }
+
+    @Test
+    void withoutDisksThereIsNoFormat() {
+        Opener opener = new Opener(desktop, dir.resolve("empty-path").toString());
+        assertFalse(opener.canFormat());
+        assertThrows(FileOperationException.class, () -> opener.format("/dev/sdb"));
+    }
 }
