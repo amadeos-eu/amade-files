@@ -115,6 +115,7 @@ final class ContextMenus {
             menu.add(mount);
             menu.add(item("Mount", null, () -> presenter.mount(place, false)));
             menu.addSeparator();
+            addFormat(menu, place);
             menu.add(item(ejectText(place), null, () -> presenter.eject(place)));
             return menu;
         }
@@ -136,6 +137,7 @@ final class ContextMenus {
                 () -> presenter.copyPath(dir)));
         if (place != null && place.drive() != null) {
             menu.addSeparator();
+            addFormat(menu, place);
             menu.add(item("Unmount", null, () -> presenter.unmount(place)));
             menu.add(item(ejectText(place), null, () -> presenter.eject(place)));
         }
@@ -197,6 +199,11 @@ final class ContextMenus {
             menu.add(item("Forget Password", null, () -> presenter.forgetPassword(place)));
         }
         menu.add(item("Remove from Network…", null, () -> presenter.removeFromNetwork(place)));
+    }
+
+    /** Format… opens Disks (amadeos-disks) for the whole drive; not for discs, nor without Disks. */
+    private void addFormat(JPopupMenu menu, Place place) {
+        if (presenter.canFormat(place)) menu.add(item("Format…", null, () -> presenter.format(place)));
     }
 
     /** Discs come out of the tray; USB drives are switched off so they can be pulled out. */

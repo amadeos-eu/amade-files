@@ -1232,6 +1232,21 @@ public final class MainPresenter {
         changeDrive(place, true);
     }
 
+    /** Format… is offered for sticks, cards and disks (not discs) while the disk tool is installed. */
+    public boolean canFormat(Place place) {
+        return place != null && place.drive() != null && !place.drive().optical() && opener.canFormat();
+    }
+
+    /** Format…: the disk tool opens with its format dialog for the whole drive, and asks before it erases. */
+    public void format(Place place) {
+        if (!canFormat(place)) return;
+        try {
+            opener.format(place.drive().disk());
+        } catch (RuntimeException e) {
+            view.showError(e.getMessage());
+        }
+    }
+
     // --8<-- [start:eject]
     private void changeDrive(Place place, boolean eject) {
         Drive drive = place.drive();
