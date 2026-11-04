@@ -119,6 +119,9 @@ class NetworkServiceTest {
         assertEquals("nas cannot be reached (Failed to retrieve share list from server: Connection timed out). "
                         + "Is it switched on and in this network?",
                 NetworkService.message("gio: smb://nas/Public/: Failed to retrieve share list from server: Connection timed out", nas));
+        assertEquals(NetworkService.GIO_MISSING,
+                NetworkService.message("env: ‚gio‘: Datei oder Verzeichnis nicht gefunden", nas),
+                "env says in the user's language that gio is not installed");
     }
 
     // ---- fake gio -----------------------------------------------------------------------------------------------
