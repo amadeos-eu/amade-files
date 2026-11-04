@@ -43,6 +43,7 @@ public class NetworkService {
 
     /** English messages and prompts, whatever the user's language, so they can be read. */
     static final List<String> GIO = List.of("env", "LC_ALL=C", "gio");
+    static final String GIO_MISSING = "gio is missing. Install the packages libglib2.0-bin, gvfs and gvfs-backends.";
     static final String ATTRIBUTES = "standard::display-name,standard::target-uri";
     private static final Duration LIST_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration MOUNT_TIMEOUT = Duration.ofSeconds(60);
@@ -301,6 +302,8 @@ public class NetworkService {
     /** gio's error without its {@code gio: smb://...: } in front, with a hint for the usual causes. */
     static String message(String error, NetworkAddress address) {
         String text = error == null ? "" : error.strip();
+        // gio runs through env (for LC_ALL=C); env, in the user's language, says when gio is not there
+        if (text.startsWith("env:") && text.contains("gio")) return GIO_MISSING;
         for (String line : text.split("\n")) {
             if (line.startsWith("gio:")) {
                 text = line;
@@ -410,7 +413,7 @@ public class NetworkService {
         try {
             process = runner.start(command);
         } catch (ProgramMissingException e) {
-            throw new FileOperationException("gio is missing. Install the packages gvfs and gvfs-backends.");
+            throw new FileOperationException(GIO_MISSING);
         } catch (IOException e) {
             throw new FileOperationException("Cannot start gio: " + e.getMessage());
         }

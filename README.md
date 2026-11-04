@@ -186,10 +186,10 @@ the live system started from are left out.
 
 ## Network drives
 
-*Network* in the tree lists the servers that announce themselves in the network (NAS boxes and Linux
-machines by mDNS, Windows PCs by WS-Discovery), the servers and shares kept from earlier, and
+*Network* in the tree lists the servers that announce themselves in the network (NAS boxes, Macs and Linux
+machines by mDNS; Debian trixie has no `wsdd` for WS-Discovery), the servers and shares kept from earlier, and
 *Connect to Server…*. Everything goes through gvfs and its `gio` command (packages `gvfs`,
-`gvfs-backends`, `gvfs-fuse`, `wsdd`), as the user, without root or `/etc/fstab`.
+`gvfs-backends`, `gvfs-fuse`; `gio` itself is in `libglib2.0-bin`), as the user, without root or `/etc/fstab`.
 
 - Opening a **Windows (SMB) server** lists its shares, as a guest; a server that shows them to registered
   users only asks for a login first. Shares that are not connected are in *italics*.
