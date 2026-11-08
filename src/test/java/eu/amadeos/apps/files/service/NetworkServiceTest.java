@@ -18,6 +18,7 @@ import java.io.PipedOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
@@ -111,6 +112,55 @@ class NetworkServiceTest {
         NetworkLoginException e = assertThrows(NetworkLoginException.class,
                 () -> service.connect(NetworkAddress.parse("smb://nas/ralf"), Credentials.of("ralf", "", "wrong")));
         assertTrue(e.rejected());
+    }
+
+    @Test
+    void connectWaitsForTheFolderGvfsFuseMakesAMomentLater() {
+        Path share = dir.resolve("smb-share:server=mycloudex2ultra.local,share=ralf");
+        NetworkService service = new NetworkService(command -> {
+            if (command.contains("mount")) {
+                Thread.ofVirtual().start(() -> {
+                    try {
+                        Thread.sleep(300);
+                        Files.createDirectories(share);
+                    } catch (IOException | InterruptedException e) {
+                        throw new IllegalStateException(e);
+                    }
+                });
+            }
+            return gio(input -> input.equals("secret12"));
+        }, dir, Duration.ofSeconds(5));
+        assertEquals(share, service.connect(NetworkAddress.parse("smb://MyCloudEX2Ultra/ralf"),
+                Credentials.of("ralf", "", "secret12")));
+    }
+
+    @Test
+    void connectAsksGioForTheLocalPathWhenNoFolderNameMatches() throws IOException {
+        Path folder = Files.createDirectories(dir.resolve("smb-share:server=192.168.1.20,share=ralf"));
+        NetworkService service = new NetworkService(command -> command.contains("info")
+                ? process("display name: ralf on 192.168.1.20\nlocal path: " + folder + "\nuri: smb://192.168.1.20/ralf/\n", "", 0)
+                : process("", "", 0), dir, Duration.ZERO);
+        assertEquals(folder, service.connect(NetworkAddress.parse("smb://mycloudex2ultra/ralf"), null));
+    }
+
+    @Test
+    void connectAsksForGvfsFuseOnlyWhenItsFolderIsMissing() throws IOException {
+        NetworkService missing = new NetworkService(command -> process("", "", 0), dir.resolve("gvfs"), Duration.ZERO);
+        FileOperationException e = assertThrows(FileOperationException.class,
+                () -> missing.connect(NetworkAddress.parse("smb://nas/ralf"), null));
+        assertTrue(e.getMessage().contains("gvfs-fuse"), e.getMessage());
+
+        NetworkService slow = new NetworkService(command -> process("", "", 0), dir, Duration.ZERO);
+        e = assertThrows(FileOperationException.class, () -> slow.connect(NetworkAddress.parse("smb://nas/ralf"), null));
+        assertFalse(e.getMessage().contains("gvfs-fuse"), e.getMessage());
+        assertTrue(e.getMessage().contains("did not appear"), e.getMessage());
+    }
+
+    @Test
+    void readsTheLocalPathOfGioInfo() {
+        assertEquals(Path.of("/run/user/1000/gvfs/smb-share:server=nas,share=ralf"),
+                NetworkService.parseLocalPath("display name: ralf on nas\nlocal path: /run/user/1000/gvfs/smb-share:server=nas,share=ralf\n"));
+        assertNull(NetworkService.parseLocalPath("display name: ralf on nas\n"));
     }
 
     @Test

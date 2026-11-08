@@ -47,11 +47,17 @@ public class NetworkService {
     static final String ATTRIBUTES = "standard::display-name,standard::target-uri";
     private static final Duration LIST_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration MOUNT_TIMEOUT = Duration.ofSeconds(60);
+    /**
+     * How long {@link #connect} waits for the folder: gvfs-fuse learns of a new mount only after {@code gio mount}
+     * has ended and makes its folder a moment later.
+     */
+    private static final Duration FOLDER_WAIT = Duration.ofSeconds(5);
     /** Schemes Files shows when gvfs finds them on the network. */
     private static final Set<String> FOUND_SCHEMES = Set.of("smb", "sftp", "ftp", "dav", "davs", "nfs");
 
     private final CommandRunner runner;
     private final Path gvfsRoot;
+    private final Duration folderWait;
 
     @Inject
     public NetworkService() {
@@ -59,8 +65,13 @@ public class NetworkService {
     }
 
     NetworkService(CommandRunner runner, Path gvfsRoot) {
+        this(runner, gvfsRoot, FOLDER_WAIT);
+    }
+
+    NetworkService(CommandRunner runner, Path gvfsRoot, Duration folderWait) {
         this.runner = runner;
         this.gvfsRoot = gvfsRoot;
+        this.folderWait = folderWait;
     }
 
     /** {@code $XDG_RUNTIME_DIR/gvfs}, where gvfs-fuse shows what is connected. */
@@ -228,12 +239,60 @@ public class NetworkService {
     public Path connect(NetworkAddress location, Credentials credentials) {
         NetworkAddress target = login(location, credentials);
         mount(target.shareAddress(), credentials);
-        Path folder = NetworkPlaces.folderOf(target, mounts());
-        if (folder == null) {
-            throw new FileOperationException(location.serverName() + " is connected, but there is no folder for it in "
+        Path folder = awaitFolder(target);
+        if (folder == null) folder = localPath(target);
+        if (folder != null) return folder;
+        if (!Files.isDirectory(gvfsRoot)) {
+            throw new FileOperationException(location.serverName() + " is connected, but there is no folder "
                     + gvfsRoot + ". Is the package gvfs-fuse installed?");
         }
-        return folder;
+        throw new FileOperationException(location.serverName() + " is connected, but its folder in " + gvfsRoot
+                + " did not appear within " + folderWait.toSeconds() + " seconds. Please try again.");
+    }
+
+    /**
+     * The folder of a just connected location, looked for again and again for {@link #folderWait}: gvfs-fuse
+     * makes it only a moment after {@code gio mount} has ended.
+     */
+    private Path awaitFolder(NetworkAddress target) {
+        long deadline = System.nanoTime() + folderWait.toNanos();
+        while (true) {
+            Path folder = NetworkPlaces.folderOf(target, mounts());
+            if (folder != null || System.nanoTime() > deadline) return folder;
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+    }
+
+    /**
+     * The folder gvfs names itself for a location, the {@code local path:} line of {@code gio info}; null if gio
+     * gives none, or one that is not a folder.
+     */
+    Path localPath(NetworkAddress target) {
+        try {
+            ProgramResult result = run(List.of("info", target.uri()), null, LIST_TIMEOUT);
+            if (!result.succeeded()) return null;
+            Path path = parseLocalPath(result.stdoutText());
+            return path != null && Files.isDirectory(path) ? path : null;
+        } catch (FileOperationException e) {
+            LOG.debug("No local path for {}: {}", target.plainUri(), e.getMessage());
+            return null;
+        }
+    }
+
+    /** The {@code local path: /run/user/1000/gvfs/...} line of {@code gio info}, or null. */
+    static Path parseLocalPath(String info) {
+        for (String line : info.split("\n")) {
+            if (line.startsWith("local path:")) {
+                String path = line.substring("local path:".length()).strip();
+                return path.isEmpty() ? null : Path.of(path);
+            }
+        }
+        return null;
     }
 
     /** Disconnects what {@code mount} shows. */
