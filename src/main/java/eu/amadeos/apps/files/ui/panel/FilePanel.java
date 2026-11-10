@@ -401,6 +401,12 @@ public final class FilePanel extends JPanel {
                 if (listener != null) listener.popup(model.entry(row), table, e.getX(), e.getY());
                 return;
             }
+            if (row < 0 && SwingUtilities.isRightMouseButton(e)) {
+                // The table fills the viewport, so the free space below the lines is the table: the folder's menu.
+                table.requestFocusInWindow();
+                if (listener != null) listener.popup(null, table, e.getX(), e.getY());
+                return;
+            }
             if (row < 0 || !SwingUtilities.isLeftMouseButton(e)) return;
             if (explorer && !e.isControlDown() && !e.isShiftDown()) {
                 if (model.isMarked(row)) clearOnRelease = true;

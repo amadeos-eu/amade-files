@@ -92,4 +92,32 @@ class OpenerTest {
         assertFalse(opener.canFormat());
         assertThrows(FileOperationException.class, () -> opener.format("/dev/sdb"));
     }
+
+    @Test
+    void terminalStartsInTheFolder() throws Exception {
+        Path bin = Files.createDirectories(dir.resolve("bin"));
+        Path work = Files.createDirectories(dir.resolve("work"));
+        Path terminal = Files.writeString(bin.resolve(Opener.TERMINAL),
+                "#!/bin/sh\nprintf '%s %s|%s' \"$1\" \"$2\" \"$(pwd)\" > \"" + dir.resolve("opened") + "\"\n");
+        Files.setPosixFilePermissions(terminal, PosixFilePermissions.fromString("rwxr-xr-x"));
+        new Opener(desktop, bin.toString()).openTerminal(work);
+        assertEquals("--working-directory " + work + "|" + work, waitForOpened());
+    }
+
+    @Test
+    void withoutATerminalItIsExplained() {
+        FileOperationException e = assertThrows(FileOperationException.class,
+                () -> new Opener(desktop, dir.resolve("empty-path").toString()).openTerminal(dir));
+        assertTrue(e.getMessage().contains("amade-terminal"), e.getMessage());
+    }
+
+    @Test
+    void newWindowStartsFilesOnTheFolder() throws Exception {
+        Path bin = Files.createDirectories(dir.resolve("bin"));
+        Path files = Files.writeString(bin.resolve(Opener.FILES),
+                "#!/bin/sh\nprintf '%s' \"$1\" > \"" + dir.resolve("opened") + "\"\n");
+        Files.setPosixFilePermissions(files, PosixFilePermissions.fromString("rwxr-xr-x"));
+        new Opener(desktop, bin.toString()).openFilesWindow(dir);
+        assertEquals(dir.toString(), waitForOpened());
+    }
 }

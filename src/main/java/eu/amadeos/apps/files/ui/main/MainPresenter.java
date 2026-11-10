@@ -582,24 +582,67 @@ public final class MainPresenter {
                 .map(FileEntry::path).toList();
     }
 
-    /** F7. */
+    /** F7: in the folder the panel shows, or the folder chosen in the tree. */
     public void newFolder() {
-        PanelState panel = panels.get(active);
-        Path parent = treeTarget != null ? treeTarget : panel.dir;
+        create(here(), true);
+    }
+
+    /** Shift+F4: an empty file, in the folder the panel shows, or the folder chosen in the tree. */
+    public void newFile() {
+        create(here(), false);
+    }
+
+    /** New Folder… on a folder line: inside that folder. */
+    public void newFolderIn(Path dir) {
+        create(dir, true);
+    }
+
+    /** New File… on a folder line: inside that folder. */
+    public void newFileIn(Path dir) {
+        create(dir, false);
+    }
+
+    private Path here() {
+        return treeTarget != null ? treeTarget : panels.get(active).dir;
+    }
+
+    /** Asks for the name; a new folder or file the panel shows gets the cursor. */
+    private void create(Path parent, boolean folder) {
         if (parent == null) return;
+        String what = folder ? "folder" : "file";
         if (trash.isTrashFiles(parent)) {
-            view.setStatus("New folders cannot be made in the trash.");
+            view.setStatus("New " + what + "s cannot be made in the trash.");
             return;
         }
-        String name = view.askText("New Folder", "Name of the new folder in " + parent + ":", "");
+        String name = view.askText(folder ? "New Folder" : "New File", "Name of the new " + what + " in " + parent + ":", "");
         if (name == null) return;
         Side side = active;
-        async(() -> fileSystem.createDirectory(parent, name), created -> {
-            view.setStatus("Created " + created.getFileName() + ".");
+        PanelState panel = panels.get(side);
+        async(() -> folder ? fileSystem.createDirectory(parent, name) : fileSystem.createFile(parent, name), created -> {
+            view.setStatus("Created " + created.getFileName() + (parent.equals(panel.dir) ? "." : " in " + parent + "."));
             if (parent.equals(panel.dir)) load(side, panel.dir, created.getFileName().toString());
             reloadOtherIfSame(side);
-            view.refreshFolders();
+            if (folder) view.refreshFolders();
         }, view::showError);
+    }
+
+    /** Open Terminal Here: the Terminal in the folder, or in the folder the panel shows. */
+    public void openTerminal(Path dir) {
+        Path target = dir != null ? dir : here();
+        if (target == null) return;
+        async(() -> {
+            opener.openTerminal(target);
+            return null;
+        }, ignored -> view.setStatus("Opened a terminal in " + target + "."), view::showError);
+    }
+
+    /** Open in New Window: a second Files window on the folder. */
+    public void openInNewWindow(Path dir) {
+        if (dir == null) return;
+        async(() -> {
+            opener.openFilesWindow(dir);
+            return null;
+        }, ignored -> view.setStatus("Opened " + dir + " in a new window."), view::showError);
     }
 
     /** F2 / Shift+F6. */

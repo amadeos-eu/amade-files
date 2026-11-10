@@ -44,6 +44,7 @@ final class ContextMenus {
         JMenuItem open = item("Open", key(KeyEvent.VK_ENTER, 0), () -> presenter.open(side, entry));
         open.setFont(open.getFont().deriveFont(Font.BOLD));
         menu.add(open);
+        if (folder) menu.add(item("Open in New Window", null, () -> presenter.openInNewWindow(entry.path())));
         if (folder && window.isTreeView()) menu.add(item("Open in Two Panels", null, () -> presenter.openInPanels(entry.path())));
         if (!folder) {
             menu.add(item("View", key(KeyEvent.VK_F3, 0), presenter::view));
@@ -53,6 +54,12 @@ final class ContextMenus {
             menu.addSeparator();
             menu.add(item("Extract Here", null, presenter::extractHere));
             menu.add(item("Extract To…", null, presenter::extractTo));
+        }
+        if (folder) {
+            // Inside the folder, so without F7 and Shift+F4, which work on the folder the panel shows.
+            menu.addSeparator();
+            menu.add(item("New Folder…", null, () -> presenter.newFolderIn(entry.path())));
+            menu.add(item("New File…", null, () -> presenter.newFileIn(entry.path())));
         }
         menu.addSeparator();
         addClipboard(menu, true);
@@ -66,6 +73,7 @@ final class ContextMenus {
         menu.add(item("Move to Trash", key(KeyEvent.VK_DELETE, 0), presenter::moveToTrash));
         menu.add(item("Delete Permanently…", key(KeyEvent.VK_DELETE, InputEvent.SHIFT_DOWN_MASK), presenter::deletePermanently));
         menu.addSeparator();
+        if (folder) menu.add(item("Open Terminal Here", null, () -> presenter.openTerminal(entry.path())));
         menu.add(item("Copy Path", key(KeyEvent.VK_C, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK), presenter::copyPaths));
         return menu;
     }
@@ -77,9 +85,12 @@ final class ContextMenus {
             menu.add(item("Empty Trash…", null, presenter::emptyTrash));
         } else {
             menu.add(item("New Folder…", key(KeyEvent.VK_F7, 0), presenter::newFolder));
+            menu.add(item("New File…", key(KeyEvent.VK_F4, InputEvent.SHIFT_DOWN_MASK), presenter::newFile));
             JMenuItem paste = item("Paste", key(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK), presenter::paste);
             paste.setEnabled(hasFiles());
             menu.add(paste);
+            menu.addSeparator();
+            menu.add(item("Open Terminal Here", null, () -> presenter.openTerminal(dir)));
         }
         menu.addSeparator();
         JCheckBoxMenuItem hidden = new JCheckBoxMenuItem("Show Hidden Files", window.isShowingHidden());
@@ -120,9 +131,11 @@ final class ContextMenus {
             return menu;
         }
         // --8<-- [end:drive-menu]
+        menu.add(item("Open in New Window", null, () -> presenter.openInNewWindow(dir)));
         menu.add(item("Open in Two Panels", null, () -> presenter.openInPanels(dir)));
         menu.addSeparator();
         menu.add(item("New Folder…", key(KeyEvent.VK_F7, 0), presenter::newFolder));
+        menu.add(item("New File…", key(KeyEvent.VK_F4, InputEvent.SHIFT_DOWN_MASK), presenter::newFile));
         JMenuItem paste = item("Paste into Folder", key(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK), () -> presenter.pasteInto(dir));
         paste.setEnabled(hasFiles());
         menu.add(paste);
@@ -133,6 +146,7 @@ final class ContextMenus {
         menu.add(enabled(item("Compress…", null, presenter::compress), place == null || place.kind() != Place.Kind.ROOT));
         menu.add(enabled(item("Move to Trash", key(KeyEvent.VK_DELETE, 0), presenter::moveToTrash), movable));
         menu.addSeparator();
+        menu.add(item("Open Terminal Here", null, () -> presenter.openTerminal(dir)));
         menu.add(item("Copy Path", key(KeyEvent.VK_C, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK),
                 () -> presenter.copyPath(dir)));
         if (place != null && place.drive() != null) {
