@@ -29,6 +29,7 @@ final class MainMenuBar extends JMenuBar {
         file.add(item("Copy…", key(KeyEvent.VK_F5, 0), presenter::copy));
         file.add(item("Move…", key(KeyEvent.VK_F6, 0), presenter::move));
         file.add(item("New Folder…", key(KeyEvent.VK_F7, 0), presenter::newFolder));
+        file.add(item("New File…", key(KeyEvent.VK_F4, shift), presenter::newFile));
         file.add(item("Rename…", key(KeyEvent.VK_F2, 0), presenter::rename));
         file.addSeparator();
         file.add(item("Extract Here", null, presenter::extractHere));

@@ -185,6 +185,20 @@ public class FileSystemService {
         }
     }
 
+    /** An empty file; it must not exist yet. */
+    public Path createFile(Path parent, String name) {
+        Path target = parent.resolve(checkName(name));
+        try {
+            return Files.createFile(target);
+        } catch (FileAlreadyExistsException e) {
+            throw new FileOperationException(name.strip() + " already exists.", e);
+        } catch (AccessDeniedException e) {
+            throw new FileOperationException("No permission to create a file in " + parent + ".", e);
+        } catch (IOException e) {
+            throw new FileOperationException("Cannot create " + target + ": " + e.getMessage(), e);
+        }
+    }
+
     public Path createDirectory(Path parent, String name) {
         Path target = parent.resolve(checkName(name));
         try {

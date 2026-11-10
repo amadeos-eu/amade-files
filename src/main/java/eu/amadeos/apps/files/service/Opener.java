@@ -23,6 +23,11 @@ public class Opener {
     private static final Logger LOG = LoggerFactory.getLogger(Opener.class);
     static final String EDITOR = "amade-pad";
     static final String XDG_OPEN = "xdg-open";
+    /** The terminal of amadeOS (amade-terminal); without it, the system's default terminal. */
+    static final String TERMINAL = "amade-terminal";
+    static final String DEFAULT_TERMINAL = "x-terminal-emulator";
+    /** Files itself, for a second window. */
+    static final String FILES = "amade-files";
     /** The disk tool of amadeOS (amadeos-system), which formats a drive. */
     static final String DISKS = "amadeos-disks";
     /** Bytes read to decide whether a file is text. */
@@ -71,6 +76,33 @@ public class Opener {
         }
     }
 
+    /** Open Terminal Here: the Terminal starts in {@code dir}. */
+    public void openTerminal(Path dir) {
+        try {
+            Optional<Path> terminal = findOnPath(TERMINAL, searchPath);
+            if (terminal.isPresent()) {
+                run(dir, terminal.get().toString(), "--working-directory", dir.toString());
+                return;
+            }
+            Path fallback = findOnPath(DEFAULT_TERMINAL, searchPath)
+                    .orElseThrow(() -> new FileOperationException("Cannot open a terminal: the Terminal (amade-terminal) is not installed."));
+            run(dir, fallback.toString());
+        } catch (IOException e) {
+            throw new FileOperationException("Cannot start the Terminal: " + e.getMessage(), e);
+        }
+    }
+
+    /** Open in New Window: another Files window on {@code dir}. */
+    public void openFilesWindow(Path dir) {
+        Path files = findOnPath(FILES, searchPath)
+                .orElseThrow(() -> new FileOperationException("Cannot open a new window: amade-files is not on the PATH."));
+        try {
+            run(dir, files.toString(), dir.toString());
+        } catch (IOException e) {
+            throw new FileOperationException("Cannot open a new window: " + e.getMessage(), e);
+        }
+    }
+
     /** True when the disk tool is installed, so the drive menu can offer Format…. */
     public boolean canFormat() {
         return findOnPath(DISKS, searchPath).isPresent();
@@ -81,7 +113,7 @@ public class Opener {
         Path disks = findOnPath(DISKS, searchPath)
                 .orElseThrow(() -> new FileOperationException("Cannot format: the program Disks (amadeos-disks) is not installed."));
         try {
-            run(disks.toString(), "--format", disk);
+            run(null, disks.toString(), "--format", disk);
         } catch (IOException e) {
             throw new FileOperationException("Cannot start Disks: " + e.getMessage(), e);
         }
@@ -90,16 +122,17 @@ public class Opener {
     // --8<-- [start:start]
     private static void start(Path editor, Path file) {
         try {
-            run(editor.toString(), file.toString());
+            run(null, editor.toString(), file.toString());
         } catch (IOException e) {
             throw new FileOperationException("Cannot start the Text Editor: " + e.getMessage(), e);
         }
     }
 
-    private static void run(String... command) throws IOException {
+    private static void run(Path dir, String... command) throws IOException {
         // The window manager shows the busy cursor until the program's window appears.
         LaunchFeedback.announce();
         new ProcessBuilder(command)
+                .directory(dir == null ? null : dir.toFile())
                 .redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")))
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectErrorStream(true)

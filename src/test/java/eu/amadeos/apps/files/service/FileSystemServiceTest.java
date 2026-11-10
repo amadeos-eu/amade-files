@@ -68,6 +68,13 @@ class FileSystemServiceTest {
         assertEquals("New Folder", folder.getFileName().toString());
         assertThrows(FileOperationException.class, () -> service.createDirectory(dir, "New Folder"));
 
+        Path file = service.createFile(dir, " notes.txt ");
+        assertEquals("notes.txt", file.getFileName().toString());
+        assertTrue(Files.isRegularFile(file));
+        assertEquals(0, Files.size(file));
+        assertThrows(FileOperationException.class, () -> service.createFile(dir, "notes.txt"));
+        assertThrows(FileOperationException.class, () -> service.createFile(dir, "a/b"));
+
         Files.writeString(dir.resolve("a.txt"), "a");
         Files.writeString(dir.resolve("b.txt"), "b");
         assertThrows(FileOperationException.class, () -> service.rename(dir.resolve("a.txt"), "b.txt"));

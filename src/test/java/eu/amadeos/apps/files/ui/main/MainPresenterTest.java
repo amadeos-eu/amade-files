@@ -317,6 +317,44 @@ class MainPresenterTest {
     }
 
     @Test
+    void newFilePutsTheCursorOnTheEmptyFile() throws IOException {
+        presenter.start(List.of());
+        view.answers.add("todo.txt");
+        presenter.newFile();
+        assertTrue(Files.isRegularFile(home.resolve("todo.txt")));
+        assertEquals(0, Files.size(home.resolve("todo.txt")));
+        assertEquals("todo.txt", view.focus.get(Side.LEFT));
+
+        view.answers.add("todo.txt");
+        presenter.newFile();
+        assertEquals("todo.txt already exists.", view.error);
+    }
+
+    @Test
+    void newFolderAndFileOnAFolderLineGoInsideIt() throws IOException {
+        presenter.start(List.of());
+        Path sub = Files.createDirectory(home.resolve("sub"));
+        view.answers.add("inner");
+        presenter.newFolderIn(sub);
+        view.answers.add("inner.txt");
+        presenter.newFileIn(sub);
+        assertTrue(Files.isDirectory(sub.resolve("inner")));
+        assertTrue(Files.isRegularFile(sub.resolve("inner.txt")));
+        assertEquals(home, view.dirs.get(Side.LEFT), "the panel stays where it is");
+    }
+
+    @Test
+    void openTerminalHereAndNewWindowStartTheirPrograms() {
+        presenter.start(List.of());
+        presenter.openTerminal(null);
+        verify(opener).openTerminal(home);
+        presenter.openTerminal(other);
+        verify(opener).openTerminal(other);
+        presenter.openInNewWindow(other);
+        verify(opener).openFilesWindow(other);
+    }
+
+    @Test
     void errorsAreShown() {
         presenter.start(List.of());
         cursor(Side.LEFT, "a.txt");
