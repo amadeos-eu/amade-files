@@ -129,6 +129,64 @@ class DriveServiceTest {
     }
 
     @Test
+    void aDirtyNtfsDiskAsksForARepair() {
+        Drive disk = new Drive("/dev/sdb2", "/dev/sdb", "TOSHIBA EXT", "", "ntfs", 1_000_000_000_000L, null, false);
+        DriveService service = new DriveService(command -> FinishedProcess.failing(32,
+                "Error mounting /dev/sdb2: GDBus.Error:org.freedesktop.UDisks2.Error.Failed: Error mounting /dev/sdb2 at"
+                        + " /media/ralf/TOSHIBA EXT: wrong fs type, bad option, bad superblock on /dev/sdb2, missing codepage"
+                        + " or helper program, or other error"));
+        NeedsRepairException e = assertThrows(NeedsRepairException.class, () -> service.mount(disk));
+        assertSame(disk, e.drive());
+    }
+
+    @Test
+    void unknownFileSystemsAreNotRepaired() {
+        Drive disc = new Drive("/dev/sr0", "/dev/sr0", "FILM", "", "udf", 1, null, true);
+        assertFalse(DriveService.needsCheck(disc, "wrong fs type, bad option, bad superblock"));
+        Drive stick = DriveService.parse(LSBLK).getFirst();
+        assertTrue(DriveService.needsCheck(stick, "Structure needs cleaning"));
+        assertFalse(DriveService.needsCheck(stick, "Not authorized"));
+    }
+
+    @Test
+    void repairCallsUdisks() {
+        List<List<String>> commands = new ArrayList<>();
+        DriveService service = new DriveService(command -> {
+            commands.add(command);
+            return FinishedProcess.printing("b true\n");
+        });
+        service.repair(DriveService.parse(LSBLK).getFirst());
+        assertEquals(List.of("busctl", "--system", "--timeout=7200", "call", "org.freedesktop.UDisks2",
+                "/org/freedesktop/UDisks2/block_devices/sdb1", "org.freedesktop.UDisks2.Filesystem", "Repair",
+                "a{sv}", "0"), commands.getFirst());
+    }
+
+    @Test
+    void aFailedRepairSaysSo() {
+        DriveService service = new DriveService(command -> FinishedProcess.printing("b false\n"));
+        FileOperationException e = assertThrows(FileOperationException.class,
+                () -> service.repair(DriveService.parse(LSBLK).getFirst()));
+        assertTrue(e.getMessage().startsWith("Holiday Photos could not be repaired."));
+    }
+
+    @Test
+    void udisksObjectPathsEscapeOddCharacters() {
+        assertEquals("/org/freedesktop/UDisks2/block_devices/mmcblk0p1", DriveService.objectPath("/dev/mmcblk0p1"));
+        assertEquals("/org/freedesktop/UDisks2/block_devices/dm_2d0", DriveService.objectPath("/dev/dm-0"));
+    }
+
+    @Test
+    void aDriveIsFoundAgainUnderItsNewName() {
+        Drive old = DriveService.parse(LSBLK).getFirst();
+        String replugged = LSBLK.replace("/dev/sdb1", "/dev/sde1").replace("PKNAME=\"sdb\"", "PKNAME=\"sde\"")
+                .replace("PATH=\"/dev/sdb\"", "PATH=\"/dev/sde\"").replace("MOUNTPOINT=\"/media/ralf/Holiday\\x20Photos\"", "MOUNTPOINT=\"\"");
+        DriveService service = new DriveService(command -> FinishedProcess.printing(replugged));
+        Drive now = service.current(old);
+        assertEquals("/dev/sde1", now.device());
+        assertFalse(now.mounted());
+    }
+
+    @Test
     void noLsblkMeansNoDrives() {
         DriveService service = new DriveService(command -> {
             throw new eu.amadeos.commons.process.ProgramMissingException("lsblk", new java.io.IOException("missing"));

@@ -46,6 +46,20 @@ public class DriveService {
     private static final Duration LIST_TIMEOUT = Duration.ofSeconds(5);
     /** Long enough for the password window of the polkit agent and a slow disc. */
     private static final Duration ACTION_TIMEOUT = Duration.ofSeconds(120);
+    /** A check of a large disk reads all of its file tables. */
+    private static final Duration REPAIR_TIMEOUT = Duration.ofHours(2);
+    /**
+     * File systems that udisks can check and repair (libblockdev: e2fsck, fsck.vfat, fsck.exfat, ntfsfix).
+     * NTFS repair only clears the "not cleanly removed" mark and resets the journal; Windows' chkdsk does more.
+     */
+    static final Set<String> REPAIRABLE = Set.of("ntfs", "vfat", "exfat", "ext2", "ext3", "ext4");
+    /**
+     * What mount says about a file system that was not unmounted before the drive went away. The kernel's
+     * ntfs3 driver refuses such a volume ("volume is dirty and force flag is not set"), which mount reports
+     * as "wrong fs type, bad option, bad superblock".
+     */
+    private static final List<String> NEEDS_CHECK = List.of("wrong fs type", "bad superblock", "dirty",
+            "structure needs cleaning", "unclean", "run chkdsk", "fsck");
 
     private final CommandRunner runner;
 
@@ -136,13 +150,76 @@ public class DriveService {
      */
     public Path mount(Drive drive) {
         if (drive.mounted()) return drive.mountPoint();
-        udisks("mount", List.of("udisksctl", "mount", "--block-device", drive.device()), drive);
+        ProgramResult result = udisksResult("mount", List.of("udisksctl", "mount", "--block-device", drive.device()),
+                drive, ACTION_TIMEOUT);
+        if (!result.succeeded()) {
+            String stderr = result.stderrText();
+            if (needsCheck(drive, stderr)) throw new NeedsRepairException(drive, failure("mount", drive, stderr));
+            throw new FileOperationException(failure("mount", drive, stderr));
+        }
         // udisks chooses the folder (/media/USER/LABEL); lsblk tells it.
         return drives().stream().filter(d -> d.device().equals(drive.device()) && d.mounted())
                 .map(Drive::mountPoint).findFirst()
                 .orElseThrow(() -> new FileOperationException(drive.name() + " was mounted, but cannot be found."));
     }
     // --8<-- [end:mount]
+
+    /**
+     * The same medium as it is connected now. A drive that was pulled out and plugged in again can come
+     * back under another device name ({@code /dev/sdc2} instead of {@code /dev/sdb2}), and its mount
+     * point is gone; null if it is not connected.
+     */
+    public Drive current(Drive drive) {
+        List<Drive> now = drives();
+        for (Drive d : now) if (d.device().equals(drive.device()) && sameMedium(d, drive)) return d;
+        for (Drive d : now) if (sameMedium(d, drive) && !d.label().isEmpty()) return d;
+        return null;
+    }
+
+    private static boolean sameMedium(Drive a, Drive b) {
+        return a.label().equals(b.label()) && a.fileSystem().equals(b.fileSystem()) && a.size() == b.size()
+                && a.optical() == b.optical();
+    }
+
+    /** A failed mount that a check of the file system may cure: a known file system and a matching message. */
+    static boolean needsCheck(Drive drive, String stderr) {
+        if (!REPAIRABLE.contains(drive.fileSystem()) || stderr == null) return false;
+        String text = stderr.toLowerCase(Locale.ROOT);
+        return NEEDS_CHECK.stream().anyMatch(text::contains);
+    }
+
+    // --8<-- [start:repair]
+    /**
+     * Checks the file system and repairs it, through udisks (method {@code Filesystem.Repair}), so that the
+     * desktop's polkit agent asks for the password if needed. The drive must not be mounted.
+     *
+     * @throws FileOperationException if udisks refuses or the file system could not be repaired
+     */
+    public void repair(Drive drive) {
+        List<String> command = List.of("busctl", "--system", "--timeout=" + REPAIR_TIMEOUT.toSeconds(),
+                "call", "org.freedesktop.UDisks2", objectPath(drive.device()),
+                "org.freedesktop.UDisks2.Filesystem", "Repair", "a{sv}", "0");
+        ProgramResult result = udisksResult("repair", command, drive, REPAIR_TIMEOUT);
+        if (!result.succeeded()) throw new FileOperationException(failure("repair", drive, result.stderrText()));
+        // "b true": repaired or nothing to repair; "b false": errors are left.
+        if (!result.stdoutText().strip().equals("b true")) {
+            throw new FileOperationException(drive.name() + " could not be repaired. Copy what you can from it"
+                    + " on another computer, or format it with Disks.");
+        }
+    }
+    // --8<-- [end:repair]
+
+    /** udisks' D-Bus object of a block device: {@code /dev/sdb2} → {@code .../block_devices/sdb2}. */
+    static String objectPath(String device) {
+        String name = name(device);
+        StringBuilder path = new StringBuilder("/org/freedesktop/UDisks2/block_devices/");
+        for (byte b : name.getBytes(StandardCharsets.UTF_8)) {
+            char c = (char) (b & 0xff);
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) path.append(c);
+            else path.append('_').append(String.format("%02x", b & 0xff));
+        }
+        return path.toString();
+    }
 
     /** Unmounts the drive, so that it can be pulled out. */
     public void unmount(Drive drive) {
@@ -168,19 +245,26 @@ public class DriveService {
     // --8<-- [end:eject]
 
     private void udisks(String action, List<String> command, Drive drive) {
-        ProgramResult result;
+        ProgramResult result = udisksResult(action, command, drive, ACTION_TIMEOUT);
+        if (!result.succeeded()) throw new FileOperationException(failure(action, drive, result.stderrText()));
+    }
+
+    private ProgramResult udisksResult(String action, List<String> command, Drive drive, Duration timeout) {
         try {
-            result = runner.run(command, ACTION_TIMEOUT);
+            return runner.run(command, timeout);
         } catch (ProgramMissingException e) {
             throw new FileOperationException(command.getFirst() + " is missing; install the package "
-                    + (command.getFirst().equals("eject") ? "eject" : "udisks2") + ".", e);
+                    + (switch (command.getFirst()) {
+                case "eject" -> "eject";
+                case "busctl" -> "systemd";
+                default -> "udisks2";
+            }) + ".", e);
         } catch (IOException e) {
             throw new FileOperationException("Cannot " + action + " " + drive.name() + ": " + e.getMessage(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new FileOperationException("Interrupted while " + drive.name() + " was being changed.", e);
         }
-        if (!result.succeeded()) throw new FileOperationException(failure(action, drive, result.stderrText()));
     }
 
     /** udisks error messages, turned into a sentence for the user. */

@@ -24,6 +24,7 @@ import eu.amadeos.apps.files.repository.NetworkRepository;
 import eu.amadeos.apps.files.repository.PreferencesRepository;
 import eu.amadeos.apps.files.service.ArchiveService;
 import eu.amadeos.apps.files.service.DriveService;
+import eu.amadeos.apps.files.service.NeedsRepairException;
 import eu.amadeos.apps.files.service.FileOperations;
 import eu.amadeos.apps.files.service.FileSystemService;
 import eu.amadeos.apps.files.service.NetworkAutostart;
@@ -88,6 +89,7 @@ class MainPresenterTest {
         when(network.mounts()).thenReturn(List.of());
         when(network.discover()).thenReturn(List.of());
         when(networkRepository.load()).thenReturn(NetworkRepository.Data.EMPTY);
+        when(drives.current(any())).thenAnswer(i -> i.getArgument(0));
         presenter = new MainPresenter(view, new FileSystemService(), new FileOperations(), trash,
                 new ArchiveService(), drives, opener, preferences, network, networkRepository, passwords, autostart,
                 new DirectExecutorService(), Runnable::run, home);
@@ -667,6 +669,126 @@ class MainPresenterTest {
         verify(drives, never()).mount(any());
     }
 
+    @Test
+    void aDirtyDriveIsRepairedAndOpenedAfterAsking() throws IOException {
+        Path mount = Files.createDirectories(dir.resolve("media/STICK"));
+        Files.writeString(mount.resolve("photo.jpg"), "jpg");
+        when(preferences.load()).thenReturn(FilePreferences.DEFAULTS.withDirs(home, other));
+        when(drives.drives()).thenReturn(List.of(STICK));
+        when(drives.mount(STICK)).thenThrow(new NeedsRepairException(STICK, "Cannot mount STICK: wrong fs type"))
+                .thenAnswer(i -> {
+                    when(drives.drives()).thenReturn(List.of(STICK.mountedAt(mount)));
+                    return mount;
+                });
+        presenter.start(List.of());
+        presenter.folderSelected(lastDrive().path());
+        verify(drives).repair(STICK);
+        assertNull(view.error);
+        assertEquals(mount, view.dirs.get(Side.LEFT));
+        assertEquals(List.of("photo.jpg"), names(Side.LEFT));
+    }
+
+    @Test
+    void aDirtyDriveStaysAloneIfTheUserSaysNo() {
+        when(drives.drives()).thenReturn(List.of(STICK));
+        when(drives.mount(STICK)).thenThrow(new NeedsRepairException(STICK, "Cannot mount STICK: wrong fs type"));
+        presenter.start(List.of());
+        view.confirmations.add(false);
+        presenter.folderSelected(lastDrive().path());
+        verify(drives, never()).repair(any());
+        assertEquals("STICK was not mounted.", view.message);
+    }
+
+    @Test
+    void aDriveThatCameBackUnderAnotherNameIsMountedThere() {
+        Drive again = new Drive("/dev/sdc1", "/dev/sdc", "STICK", "", "vfat", 8_000_000_000L, null, false);
+        when(drives.drives()).thenReturn(List.of(STICK));
+        when(drives.current(STICK)).thenReturn(again);
+        when(drives.mount(again)).thenReturn(dir);
+        presenter.start(List.of());
+        presenter.folderSelected(lastDrive().path());
+        verify(drives).mount(again);
+        verify(drives, never()).mount(STICK);
+    }
+
+    @Test
+    void aPulledOutDriveSendsItsPanelsHome() throws IOException {
+        Path mount = Files.createDirectories(dir.resolve("media/STICK"));
+        when(drives.drives()).thenReturn(List.of(STICK.mountedAt(mount)));
+        presenter.start(List.of(mount.toString()));
+        presenter.refreshPlaces();
+        assertEquals(mount, view.dirs.get(Side.LEFT));
+        when(drives.drives()).thenReturn(List.of());
+        presenter.refreshPlaces();
+        assertEquals(home, view.dirs.get(Side.LEFT));
+        assertEquals("STICK was disconnected.", view.message);
+    }
+
+    @Test
+    void thePlacesBarListsHomeDrivesAndConnect() {
+        when(drives.drives()).thenReturn(List.of(STICK));
+        presenter.start(List.of());
+        List<Place.Kind> kinds = view.placesBar.stream().map(Place::kind).toList();
+        assertEquals(Place.Kind.HOME, kinds.getFirst());
+        assertTrue(kinds.contains(Place.Kind.MEDIA));
+        assertFalse(kinds.contains(Place.Kind.NETWORK));
+        assertEquals(Place.Kind.CONNECT, kinds.getLast());
+    }
+
+    @Test
+    void aDriveChosenInThePlacesBarOpensInThatPanel() throws IOException {
+        Path mount = Files.createDirectories(dir.resolve("media/STICK"));
+        when(drives.drives()).thenReturn(List.of(STICK));
+        when(drives.mount(STICK)).thenAnswer(i -> {
+            when(drives.drives()).thenReturn(List.of(STICK.mountedAt(mount)));
+            return mount;
+        });
+        presenter.start(List.of());
+        presenter.panelActivated(Side.RIGHT);
+        Place stick = view.placesBar.stream().filter(p -> p.drive() != null).findFirst().orElseThrow();
+        presenter.placeChosen(stick);
+        assertEquals(mount, view.dirs.get(Side.RIGHT));
+        assertEquals(home, view.dirs.get(Side.LEFT));
+        Place homePlace = view.placesBar.getFirst();
+        presenter.placeChosen(homePlace);
+        assertEquals(home, view.dirs.get(Side.RIGHT));
+    }
+
+    @Test
+    void backAndForwardWalkThroughTheFoldersShown() {
+        presenter.start(List.of());
+        assertEquals(List.of(false, false, true), view.navigation.get(Side.LEFT));
+        presenter.open(Side.LEFT, entry(Side.LEFT, "Docs"));
+        assertEquals(home.resolve("Docs"), view.dirs.get(Side.LEFT));
+        assertEquals(List.of(true, false, true), view.navigation.get(Side.LEFT));
+
+        presenter.back();
+        assertEquals(home, view.dirs.get(Side.LEFT));
+        assertEquals("Docs", view.focus.get(Side.LEFT));
+        assertEquals(List.of(false, true, true), view.navigation.get(Side.LEFT));
+
+        presenter.forward();
+        assertEquals(home.resolve("Docs"), view.dirs.get(Side.LEFT));
+        assertEquals(List.of(true, false, true), view.navigation.get(Side.LEFT));
+
+        // Going somewhere new forgets the way forward.
+        presenter.back();
+        presenter.up(Side.LEFT);
+        assertEquals(List.of(true, false, true), view.navigation.get(Side.LEFT));
+        presenter.back();
+        assertEquals(home, view.dirs.get(Side.LEFT));
+    }
+
+    @Test
+    void homeAndBackWorkInTheActivePanel() {
+        presenter.start(List.of());
+        presenter.panelActivated(Side.RIGHT);
+        presenter.goHome();
+        assertEquals(home, view.dirs.get(Side.RIGHT));
+        presenter.back();
+        assertEquals(other, view.dirs.get(Side.RIGHT));
+    }
+
     private Place lastDrive() {
         return view.places.stream().filter(p -> p.kind() == Place.Kind.MEDIA).reduce((a, b) -> b).orElseThrow();
     }
@@ -768,6 +890,7 @@ class MainPresenterTest {
         final Map<Side, String> focus = new EnumMap<>(Side.class);
         final Map<Side, String> status = new EnumMap<>(Side.class);
         final Map<Side, Boolean> trashViews = new EnumMap<>(Side.class);
+        final Map<Side, List<Boolean>> navigation = new EnumMap<>(Side.class);
         final Deque<String> answers = new ArrayDeque<>();
         final Deque<Boolean> confirmations = new ArrayDeque<>();
         final Deque<ConflictChoice> conflicts = new ArrayDeque<>();
@@ -775,6 +898,7 @@ class MainPresenterTest {
         final List<String> questions = new ArrayList<>();
         final Map<Path, List<Path>> folders = new HashMap<>();
         List<Place> places = List.of();
+        List<Place> placesBar = List.of();
         ClipboardFiles clipboard;
         String clipboardText;
         ViewMode viewMode;
@@ -797,6 +921,16 @@ class MainPresenterTest {
         @Override
         public void setPanelStatus(Side side, String text) {
             status.put(side, text);
+        }
+
+        @Override
+        public void setPlacesBar(List<Place> list) {
+            placesBar = list;
+        }
+
+        @Override
+        public void setNavigation(Side side, boolean back, boolean forward, boolean up) {
+            navigation.put(side, List.of(back, forward, up));
         }
 
         @Override

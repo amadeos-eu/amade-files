@@ -43,7 +43,7 @@ import java.util.Map;
  * one) with the function-key bar. Both have a status line.
  */
 public final class MainWindow extends JFrame implements MainView {
-    /** Every few seconds the tree looks for USB sticks and other media that came or went. */
+    /** Every few seconds the tree and the places bar look for USB sticks and other media that came or went. */
     private static final int PLACES_POLL_MS = 3000;
     /** The format chosen last in the Compress dialog, for the next one. */
     private ArchiveService.Format lastFormat = ArchiveService.Format.ZIP;
@@ -121,7 +121,8 @@ public final class MainWindow extends JFrame implements MainView {
         tree.setListener(treeListener());
         tree.setDropListener(dropListener());
         Timer places = new Timer(PLACES_POLL_MS, e -> {
-            if (isShowing() && viewMode == ViewMode.TREE) presenter.refreshPlaces();
+            // Both views show the drives: the tree, or the places bar above the panels.
+            if (isShowing()) presenter.refreshPlaces();
         });
         places.start();
 
@@ -176,6 +177,32 @@ public final class MainWindow extends JFrame implements MainView {
             @Override
             public void up() {
                 presenter.up(side);
+            }
+
+            @Override
+            public void back() {
+                presenter.back();
+            }
+
+            @Override
+            public void forward() {
+                presenter.forward();
+            }
+
+            @Override
+            public void home() {
+                presenter.goHome();
+            }
+
+            @Override
+            public void placeChosen(Place place) {
+                presenter.placeChosen(place);
+            }
+
+            @Override
+            public void placePopup(Place place, Component component, int x, int y) {
+                JPopupMenu menu = menus.place(place);
+                if (menu != null) menu.show(component, x, y);
             }
 
             @Override
@@ -386,6 +413,11 @@ public final class MainWindow extends JFrame implements MainView {
     }
 
     @Override
+    public void setNavigation(Side side, boolean back, boolean forward, boolean up) {
+        panels.get(side).setNavigation(back, forward, up);
+    }
+
+    @Override
     public void setTrashView(Side side, boolean trash) {
         trashViews.put(side, trash);
         panels.get(side).setTrashView(trash);
@@ -427,6 +459,11 @@ public final class MainWindow extends JFrame implements MainView {
     @Override
     public void setPlaces(List<Place> places) {
         tree.setPlaces(places);
+    }
+
+    @Override
+    public void setPlacesBar(List<Place> places) {
+        for (FilePanel panel : panels.values()) panel.setPlaces(places);
     }
 
     @Override

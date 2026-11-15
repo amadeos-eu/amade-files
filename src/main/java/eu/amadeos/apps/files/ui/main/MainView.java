@@ -24,6 +24,9 @@ public interface MainView {
 
     void setPanelStatus(Side side, String text);
 
+    /** Which of Back, Forward and Up the panel can do now. */
+    void setNavigation(Side side, boolean back, boolean forward, boolean up);
+
     /** The panel shows a trash: origin and deletion date instead of modification date and permissions. */
     void setTrashView(Side side, boolean trash);
 
@@ -33,6 +36,9 @@ public interface MainView {
 
     /** Folder tree or two panels; the tree view shows the left panel next to the tree. */
     void setViewMode(ViewMode mode);
+
+    /** The places bar above each panel in the two-panel view: home, drives, network drives. */
+    void setPlacesBar(List<Place> places);
 
     /** The top level of the folder tree. */
     void setPlaces(List<Place> places);
