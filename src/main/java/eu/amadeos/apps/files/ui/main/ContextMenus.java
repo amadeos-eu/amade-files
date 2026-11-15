@@ -168,6 +168,37 @@ final class ContextMenus {
         return menu;
     }
 
+    // --8<-- [start:place-menu]
+    /**
+     * A place in the places bar of the two-panel view: for drives Mount and Open, Unmount, Safely Remove and
+     * Format, for network drives the share menu; null for Home, File System and Trash.
+     */
+    JPopupMenu place(Place place) {
+        JPopupMenu menu = new JPopupMenu();
+        if (place.drive() != null) {
+            JMenuItem open = item(place.needsMount() ? "Mount and Open" : "Open", null, () -> presenter.placeChosen(place));
+            open.setFont(open.getFont().deriveFont(Font.BOLD));
+            menu.add(open);
+            if (place.needsMount()) menu.add(item("Mount", null, () -> presenter.mount(place, false)));
+            else menu.add(item("Unmount", null, () -> presenter.unmount(place)));
+            menu.addSeparator();
+            addFormat(menu, place);
+            menu.add(item(ejectText(place), null, () -> presenter.eject(place)));
+            return menu;
+        }
+        if (place.kind() == Place.Kind.CONNECT || place.needsConnect()) return networkMenu(place.path(), place);
+        if (place.kind() == Place.Kind.SHARE) {
+            menu.add(item("Open", null, () -> presenter.placeChosen(place)));
+            menu.add(item("Copy Network Address", null, () -> presenter.copyNetworkAddress(place.path(), null)));
+            menu.addSeparator();
+            menu.add(item("Disconnect", null, () -> presenter.disconnect(place)));
+            addSaved(menu, place);
+            return menu;
+        }
+        return null;
+    }
+    // --8<-- [end:place-menu]
+
     /**
      * Network, a server, a share that is not connected and Connect to Server; null for a connected share, which
      * gets the folder menu with Disconnect.

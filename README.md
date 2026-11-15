@@ -90,6 +90,12 @@ The tree view is the default.
 
 - **Two panels** side by side; *View → Show Second Panel* (Ctrl+F1) switches to a single panel. The
   active panel has the active title colours in its path bar.
+- **Places bar** above each panel: Home, Trash, File System, every USB stick, disk and disc (italic
+  while not mounted), the network drives that are connected or saved, and *Connect…*. A click shows
+  the place in that panel, mounting or connecting it first; the right mouse button offers Mount and
+  Open, Unmount, Safely Remove and Format, or the network drive's Disconnect and Log In As. The place
+  the panel is in is pressed. The bar follows plugged-in drives every few seconds, like the tree.
+- **Back, Forward, Up, Home** buttons in front of the path, in both views.
 - **Iconic path** as in the CDE File Manager (dtfile): one button per folder; long paths collapse
   into "…" so the current folder stays visible. A click on its free space, or Ctrl+L, turns it into
   a text field with the path selected: type a path (`~` and relative paths work, a file opens its

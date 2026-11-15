@@ -5,6 +5,7 @@ import eu.amadeos.commons.swing.ToolButtons;
 import eu.amadeos.commons.swing.ToolIcon;
 import eu.amadeos.commons.theme.DesktopTheme;
 import eu.amadeos.apps.files.domain.FileEntry;
+import eu.amadeos.apps.files.domain.Place;
 import eu.amadeos.apps.files.domain.SortKey;
 import eu.amadeos.apps.files.domain.SortOrder;
 
@@ -57,6 +58,12 @@ public final class FilePanel extends JPanel {
 
         void home();
 
+        /** A place of the places bar was clicked (two-panel view). */
+        void placeChosen(Place place);
+
+        /** Right mouse button on a place of the places bar. */
+        void placePopup(Place place, Component component, int x, int y);
+
         void navigate(Path dir);
 
         void sortBy(SortKey key);
@@ -84,6 +91,9 @@ public final class FilePanel extends JPanel {
     private final IconicPathBar pathBar = new IconicPathBar();
     /** Back, Forward, Up and Home in front of the path bar. */
     private final JPanel pathRow = new JPanel(new BorderLayout(4, 0));
+    /** Home, drives and network drives above the path in the two-panel view. */
+    private final PlacesBar placesBar = new PlacesBar();
+    private final JPanel header = new JPanel(new BorderLayout());
     private final JButton backButton = navigationButton(NavigationGlyph.BACK, "Back (Alt+Left)", "back");
     private final JButton forwardButton = navigationButton(NavigationGlyph.FORWARD, "Forward (Alt+Right)", "forward");
     private final JButton upButton = navigationButton(NavigationGlyph.UP, "Up (Alt+Up)", "up");
@@ -183,6 +193,18 @@ public final class FilePanel extends JPanel {
         pathRow.setOpaque(false);
         pathRow.add(buttonsTop, BorderLayout.WEST);
         pathRow.add(pathBar, BorderLayout.CENTER);
+        placesBar.setListener(new PlacesBar.Listener() {
+            @Override
+            public void chosen(Place place) {
+                navigation(l -> l.placeChosen(place));
+            }
+
+            @Override
+            public void popup(Place place, Component component, int x, int y) {
+                navigation(l -> l.placePopup(place, component, x, y));
+            }
+        });
+        header.setOpaque(false);
         status.addMouseListener(activate);
 
         scroll.setBorder(AmadeUI.sunken());
@@ -207,7 +229,7 @@ public final class FilePanel extends JPanel {
                 BorderFactory.createEmptyBorder(1, 6, 1, 6)));
         statusBar.add(status, BorderLayout.CENTER);
 
-        add(pathRow, BorderLayout.NORTH);
+        attachHeader();
         add(scroll, BorderLayout.CENTER);
         add(statusBar, BorderLayout.SOUTH);
     }
@@ -227,14 +249,27 @@ public final class FilePanel extends JPanel {
     public void setExplorer(boolean value) {
         explorer = value;
         if (value) {
-            remove(pathRow);
+            remove(header);
             remove(statusBar);
         } else {
-            add(pathRow, BorderLayout.NORTH);
+            attachHeader();
             add(statusBar, BorderLayout.SOUTH);
         }
         revalidate();
         table.repaint();
+    }
+
+    /** Places bar on top, then the buttons and the path; the tree view takes the path row into the window. */
+    private void attachHeader() {
+        header.removeAll();
+        header.add(placesBar, BorderLayout.NORTH);
+        header.add(pathRow, BorderLayout.CENTER);
+        add(header, BorderLayout.NORTH);
+    }
+
+    /** The places of the places bar: Home, file system, trash, drives and network drives. */
+    public void setPlaces(List<Place> places) {
+        placesBar.setPlaces(places);
     }
 
     /** The path bar with the Back, Forward, Up and Home buttons in front of it. */
@@ -293,6 +328,7 @@ public final class FilePanel extends JPanel {
             sort = newSort;
             model.setEntries(entries);
             pathBar.setPath(dir);
+            placesBar.setDir(dir);
             showSortInHeader();
             int row = focusName == null ? -1 : model.indexOf(focusName);
             if (row < 0 && model.getRowCount() > 0) row = 0;

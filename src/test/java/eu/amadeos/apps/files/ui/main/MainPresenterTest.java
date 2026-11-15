@@ -725,6 +725,36 @@ class MainPresenterTest {
     }
 
     @Test
+    void thePlacesBarListsHomeDrivesAndConnect() {
+        when(drives.drives()).thenReturn(List.of(STICK));
+        presenter.start(List.of());
+        List<Place.Kind> kinds = view.placesBar.stream().map(Place::kind).toList();
+        assertEquals(Place.Kind.HOME, kinds.getFirst());
+        assertTrue(kinds.contains(Place.Kind.MEDIA));
+        assertFalse(kinds.contains(Place.Kind.NETWORK));
+        assertEquals(Place.Kind.CONNECT, kinds.getLast());
+    }
+
+    @Test
+    void aDriveChosenInThePlacesBarOpensInThatPanel() throws IOException {
+        Path mount = Files.createDirectories(dir.resolve("media/STICK"));
+        when(drives.drives()).thenReturn(List.of(STICK));
+        when(drives.mount(STICK)).thenAnswer(i -> {
+            when(drives.drives()).thenReturn(List.of(STICK.mountedAt(mount)));
+            return mount;
+        });
+        presenter.start(List.of());
+        presenter.panelActivated(Side.RIGHT);
+        Place stick = view.placesBar.stream().filter(p -> p.drive() != null).findFirst().orElseThrow();
+        presenter.placeChosen(stick);
+        assertEquals(mount, view.dirs.get(Side.RIGHT));
+        assertEquals(home, view.dirs.get(Side.LEFT));
+        Place homePlace = view.placesBar.getFirst();
+        presenter.placeChosen(homePlace);
+        assertEquals(home, view.dirs.get(Side.RIGHT));
+    }
+
+    @Test
     void backAndForwardWalkThroughTheFoldersShown() {
         presenter.start(List.of());
         assertEquals(List.of(false, false, true), view.navigation.get(Side.LEFT));
@@ -868,6 +898,7 @@ class MainPresenterTest {
         final List<String> questions = new ArrayList<>();
         final Map<Path, List<Path>> folders = new HashMap<>();
         List<Place> places = List.of();
+        List<Place> placesBar = List.of();
         ClipboardFiles clipboard;
         String clipboardText;
         ViewMode viewMode;
@@ -890,6 +921,11 @@ class MainPresenterTest {
         @Override
         public void setPanelStatus(Side side, String text) {
             status.put(side, text);
+        }
+
+        @Override
+        public void setPlacesBar(List<Place> list) {
+            placesBar = list;
         }
 
         @Override

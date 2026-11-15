@@ -98,6 +98,8 @@ public final class MainPresenter {
     private Side active = Side.LEFT;
     private FilePreferences preferences = FilePreferences.DEFAULTS;
     private List<Place> places = List.of();
+    /** What the places bar shows now. */
+    private List<Place> lastPlacesBar;
     /** The folder chosen in the tree while the tree has the keyboard focus; null otherwise. */
     private Path treeTarget;
     private boolean busy;
@@ -1280,9 +1282,10 @@ public final class MainPresenter {
             leaveVanishedDrives(found);
             if (!found.equals(places)) {
                 places = found;
-                view.setPlaces(found);
+                showPlaces(found);
             }
             showNetwork(mounts.get(), false);
+            updatePlacesBar();
             discover(false);
         }, error -> LOG.debug("Cannot read the places: {}", error));
     }
@@ -1310,6 +1313,57 @@ public final class MainPresenter {
             }
             if (treeTarget != null && treeTarget.startsWith(drive.mountPoint())) treeTarget = null;
             if (shown) view.setStatus(drive.name() + " was disconnected.");
+        }
+    }
+
+    private void showPlaces(List<Place> found) {
+        view.setPlaces(found);
+        updatePlacesBar();
+    }
+
+    // --8<-- [start:places-bar]
+    /**
+     * The places bar of the two-panel view: Home, File System, Trash and the drives as in the tree, then the
+     * network drives that are connected or saved, and Connect to Server.
+     */
+    List<Place> placesBar() {
+        List<Place> bar = new ArrayList<>();
+        for (Place place : places) if (place.kind() != Place.Kind.NETWORK) bar.add(place);
+        Set<Path> seen = new HashSet<>();
+        List<Place> network = new ArrayList<>(networkTree.top());
+        for (List<Place> shares : networkTree.children().values()) network.addAll(shares);
+        for (Place place : network) {
+            if (place.kind() != Place.Kind.SHARE || !seen.add(place.path())) continue;
+            boolean saved = place.address() != null && networkData.find(place.address().shareAddress()) != null;
+            if (!place.isVirtual() || saved) bar.add(place);
+        }
+        bar.add(new Place("Connect…", Place.CONNECT_PATH, Place.Kind.CONNECT));
+        return bar;
+    }
+    // --8<-- [end:places-bar]
+
+    private void updatePlacesBar() {
+        List<Place> bar = placesBar();
+        if (bar.equals(lastPlacesBar)) return;
+        lastPlacesBar = bar;
+        view.setPlacesBar(bar);
+    }
+
+    /** A place of the places bar: shown in the active panel, after mounting or connecting it. */
+    public void placeChosen(Place place) {
+        treeTarget = null;
+        if (place.needsMount()) {
+            mount(place, true);
+        } else if (place.kind() == Place.Kind.CONNECT) {
+            connectToServer(null);
+        } else if (place.needsConnect()) {
+            connect(place, true);
+        } else if (!place.isVirtual()) {
+            if (place.kind() == Place.Kind.TRASH) {
+                goTrash();
+            } else {
+                load(active, place.path(), null);
+            }
         }
     }
 
@@ -1353,7 +1407,7 @@ public final class MainPresenter {
     private void mounted(Drive drive, Mounted mounted, boolean open) {
         changingDrives.remove(drive.device());
         places = mounted.places();
-        view.setPlaces(places);
+        showPlaces(places);
         view.setStatus(drive.name() + " is ready.");
         if (open) {
             if (active != Side.LEFT && treeView()) panelActivated(Side.LEFT);
@@ -1445,7 +1499,7 @@ public final class MainPresenter {
         }, found -> {
             changingDrives.remove(drive.device());
             places = found;
-            view.setPlaces(found);
+            showPlaces(found);
             view.setStatus(drive.name() + (drive.optical() && eject ? " is ejected." : " can be removed now."));
         }, error -> {
             changingDrives.remove(drive.device());
@@ -1473,6 +1527,7 @@ public final class MainPresenter {
                     shareLists.containsKey(server.address().server().key()));
         }
         view.setFolderNames(tree.folderNames());
+        updatePlacesBar();
     }
     // --8<-- [end:show-network]
 
