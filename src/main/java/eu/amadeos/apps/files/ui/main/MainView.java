@@ -24,6 +24,9 @@ public interface MainView {
 
     void setPanelStatus(Side side, String text);
 
+    /** Which of Back, Forward and Up the panel can do now. */
+    void setNavigation(Side side, boolean back, boolean forward, boolean up);
+
     /** The panel shows a trash: origin and deletion date instead of modification date and permissions. */
     void setTrashView(Side side, boolean trash);
 

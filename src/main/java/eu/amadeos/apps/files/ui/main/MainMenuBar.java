@@ -84,6 +84,8 @@ final class MainMenuBar extends JMenuBar {
         add(view);
 
         JMenu go = menu("Go", KeyEvent.VK_G);
+        go.add(item("Back", key(KeyEvent.VK_LEFT, alt), presenter::back));
+        go.add(item("Forward", key(KeyEvent.VK_RIGHT, alt), presenter::forward));
         go.add(item("Up", key(KeyEvent.VK_UP, alt), () -> presenter.up(presenter.activeSide())));
         go.add(item("Home Folder", key(KeyEvent.VK_HOME, alt), presenter::goHome));
         go.add(item("Trash", null, presenter::goTrash));
@@ -124,7 +126,9 @@ final class MainMenuBar extends JMenuBar {
                 <html><table cellpadding=2>
                 <tr><td><b>Ctrl+1 / Ctrl+2</b></td><td>Tree view / two panels</td></tr>
                 <tr><td><b>Enter</b></td><td>Open folder or file</td></tr>
-                <tr><td><b>Backspace</b></td><td>Parent folder</td></tr>
+                <tr><td><b>Backspace, Alt+Up</b></td><td>Parent folder</td></tr>
+                <tr><td><b>Alt+Left / Alt+Right</b></td><td>Back / forward to the folders shown before</td></tr>
+                <tr><td><b>Alt+Home</b></td><td>Home folder</td></tr>
                 <tr><td><b>Tab</b></td><td>Other panel; in the tree view between tree and contents</td></tr>
                 <tr><td><b>Ctrl+X / Ctrl+C / Ctrl+V</b></td><td>Cut / copy / paste files</td></tr>
                 <tr><td><b>Insert, Space</b></td><td>Select line and move down</td></tr>

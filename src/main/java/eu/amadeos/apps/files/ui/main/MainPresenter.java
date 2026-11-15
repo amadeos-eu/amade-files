@@ -25,6 +25,7 @@ import eu.amadeos.apps.files.repository.NetworkRepository;
 import eu.amadeos.apps.files.repository.PreferencesRepository;
 import eu.amadeos.apps.files.service.ArchiveService;
 import eu.amadeos.apps.files.service.DriveService;
+import eu.amadeos.apps.files.service.NeedsRepairException;
 import eu.amadeos.apps.files.service.FileOperationException;
 import eu.amadeos.apps.files.service.FileOperations;
 import eu.amadeos.apps.files.service.FileOperations.Summary;
@@ -46,7 +47,9 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -131,7 +134,13 @@ public final class MainPresenter {
         int generation;
         /** The folder is the {@code files} folder of a trash. */
         boolean inTrash;
+        /** Folders shown before, newest first, for Back; and those left with Back, for Forward. */
+        Deque<Path> back = new ArrayDeque<>();
+        Deque<Path> forward = new ArrayDeque<>();
     }
+
+    /** Back remembers this many folders per panel. */
+    static final int HISTORY_SIZE = 50;
 
     private record Listing(List<FileEntry> entries, long free, boolean inTrash) {
     }
@@ -278,6 +287,38 @@ public final class MainPresenter {
         load(side, dir, null);
     }
 
+    // --8<-- [start:history]
+    /** Back: the folder shown before in the active panel. */
+    public void back() {
+        PanelState panel = panels.get(active);
+        if (panel.back.isEmpty() || panel.dir == null) return;
+        Path target = panel.back.pop();
+        panel.forward.push(panel.dir);
+        load(active, target, childName(target, panel.dir), false);
+    }
+
+    /** Forward: the folder left with Back. */
+    public void forward() {
+        PanelState panel = panels.get(active);
+        if (panel.forward.isEmpty() || panel.dir == null) return;
+        Path target = panel.forward.pop();
+        panel.back.push(panel.dir);
+        load(active, target, childName(target, panel.dir), false);
+    }
+    // --8<-- [end:history]
+
+    /** Back from a sub-folder puts the cursor on the folder that leads to it. */
+    private static String childName(Path target, Path from) {
+        if (from == null || !from.startsWith(target) || from.equals(target)) return null;
+        return target.relativize(from).getName(0).toString();
+    }
+
+    private void updateNavigation(Side side) {
+        PanelState panel = panels.get(side);
+        view.setNavigation(side, !panel.back.isEmpty(), !panel.forward.isEmpty(),
+                panel.dir != null && panel.dir.getParent() != null);
+    }
+
     public void sortBy(Side side, SortKey key) {
         PanelState panel = panels.get(side);
         panel.sort = panel.sort.toggle(key);
@@ -311,6 +352,11 @@ public final class MainPresenter {
 
     // --8<-- [start:load]
     private void load(Side side, Path dir, String focusName) {
+        load(side, dir, focusName, true);
+    }
+
+    /** {@code remember}: the folder shown so far goes on the Back list. */
+    private void load(Side side, Path dir, String focusName, boolean remember) {
         PanelState panel = panels.get(side);
         int generation = ++panel.generation;
         Path folder = dir.toAbsolutePath().normalize();
@@ -327,6 +373,11 @@ public final class MainPresenter {
             return new Listing(entries, fileSystem.freeSpace(folder), inTrash);
         }, listing -> {
             if (generation != panel.generation) return;
+            if (remember && panel.dir != null && !panel.dir.equals(folder)) {
+                panel.back.push(panel.dir);
+                while (panel.back.size() > HISTORY_SIZE) panel.back.removeLast();
+                panel.forward.clear();
+            }
             panel.dir = folder;
             panel.inTrash = listing.inTrash();
             panel.entries = listing.entries().stream().sorted(panel.sort.comparator()).toList();
@@ -336,6 +387,7 @@ public final class MainPresenter {
             view.setTrashView(side, panel.inTrash);
             show(side, focusName);
             updateStatus(side);
+            updateNavigation(side);
         }, error -> {
             if (generation != panel.generation) return;
             if (panel.dir != null && !Files.exists(folder)) {
@@ -1005,8 +1057,17 @@ public final class MainPresenter {
         Path left = panels.get(Side.LEFT).dir;
         Path right = panels.get(Side.RIGHT).dir;
         if (left == null || right == null) return;
-        load(Side.LEFT, right, null);
-        load(Side.RIGHT, left, null);
+        // Each panel takes its history along.
+        PanelState l = panels.get(Side.LEFT);
+        PanelState r = panels.get(Side.RIGHT);
+        Deque<Path> back = l.back;
+        Deque<Path> forward = l.forward;
+        l.back = r.back;
+        l.forward = r.forward;
+        r.back = back;
+        r.forward = forward;
+        load(Side.LEFT, right, null, false);
+        load(Side.RIGHT, left, null, false);
     }
 
     public void setShowHidden(boolean showHidden) {
@@ -1216,6 +1277,7 @@ public final class MainPresenter {
                 }
             }
             knownDevices = devices;
+            leaveVanishedDrives(found);
             if (!found.equals(places)) {
                 places = found;
                 view.setPlaces(found);
@@ -1223,6 +1285,32 @@ public final class MainPresenter {
             showNetwork(mounts.get(), false);
             discover(false);
         }, error -> LOG.debug("Cannot read the places: {}", error));
+    }
+
+    /**
+     * A drive that was mounted is gone (pulled out, or its connection dropped): panels that showed it go to
+     * the home folder, instead of showing a folder that cannot be read any more.
+     */
+    private void leaveVanishedDrives(List<Place> found) {
+        Set<Path> stillMounted = new HashSet<>();
+        for (Place place : found) {
+            if (place.drive() != null && place.drive().mounted()) stillMounted.add(place.drive().mountPoint());
+        }
+        for (Place old : places) {
+            Drive drive = old.drive();
+            if (drive == null || !drive.mounted() || stillMounted.contains(drive.mountPoint())
+                    || changingDrives.contains(drive.device())) continue;
+            boolean shown = false;
+            for (Side side : Side.values()) {
+                PanelState panel = panels.get(side);
+                if (panel.dir != null && panel.dir.startsWith(drive.mountPoint())) {
+                    load(side, home, null);
+                    shown = true;
+                }
+            }
+            if (treeTarget != null && treeTarget.startsWith(drive.mountPoint())) treeTarget = null;
+            if (shown) view.setStatus(drive.name() + " was disconnected.");
+        }
     }
 
     /** Home, trash, file system, the drives and Network. */
@@ -1239,30 +1327,71 @@ public final class MainPresenter {
     }
 
     // --8<-- [start:mount]
-    /** Mounts a drive; {@code open} shows it on the contents side afterwards. */
+    /**
+     * Mounts a drive; {@code open} shows it on the contents side afterwards. A drive that was pulled out
+     * and plugged in again is looked up anew first, as it may have another device name now. If its file
+     * system needs a check (it lost its connection while mounted), Files offers to repair it and mounts it
+     * afterwards.
+     */
     public void mount(Place place, boolean open) {
         Drive drive = place.drive();
         if (drive == null || !changingDrives.add(drive.device())) return;
         unmountedByUser.remove(drive.device());
         view.setStatus("Mounting " + drive.name() + " …");
-        async(() -> {
-            Path mountPoint = drives.mount(drive);
+        asyncTry(() -> {
+            Drive current = drives.current(drive);
+            if (current == null) throw new FileOperationException(drive.name() + " is no longer connected.");
+            Path mountPoint = drives.mount(current);
             return new Mounted(mountPoint, allPlaces());
-        }, mounted -> {
+        }, mounted -> mounted(drive, mounted, open), error -> {
             changingDrives.remove(drive.device());
-            places = mounted.places();
-            view.setPlaces(places);
-            view.setStatus(drive.name() + " is ready.");
-            if (open) {
-                if (active != Side.LEFT && treeView()) panelActivated(Side.LEFT);
-                treeTarget = null;
-                load(treeView() ? Side.LEFT : active, mounted.mountPoint(), null);
-            }
-        }, error -> {
-            changingDrives.remove(drive.device());
-            view.showError(error);
+            if (error instanceof NeedsRepairException repair) offerRepair(repair, open);
+            else mountFailed(error.getMessage());
         });
     }
+
+    private void mounted(Drive drive, Mounted mounted, boolean open) {
+        changingDrives.remove(drive.device());
+        places = mounted.places();
+        view.setPlaces(places);
+        view.setStatus(drive.name() + " is ready.");
+        if (open) {
+            if (active != Side.LEFT && treeView()) panelActivated(Side.LEFT);
+            treeTarget = null;
+            load(treeView() ? Side.LEFT : active, mounted.mountPoint(), null);
+        }
+    }
+
+    private void mountFailed(String message) {
+        view.setStatus(" ");
+        view.showError(message);
+        refreshPlaces();
+    }
+
+    // --8<-- [start:repair]
+    /** The file system needs a check: asks once, repairs it and mounts the drive again. */
+    private void offerRepair(NeedsRepairException problem, boolean open) {
+        Drive drive = problem.drive();
+        if (!view.confirm("Repair " + drive.name(), drive.name() + " was not removed safely (or lost its connection)"
+                + " and must be checked before it can be used.\n\nCheck and repair it now, then open it?"
+                + "\nThis can take a few minutes on a large disk.")) {
+            view.setStatus(drive.name() + " was not mounted.");
+            return;
+        }
+        if (!changingDrives.add(drive.device())) return;
+        view.setStatus("Checking and repairing " + drive.name() + " …");
+        asyncTry(() -> {
+            drives.repair(drive);
+            return new Mounted(drives.mount(drive), allPlaces());
+        }, mounted -> {
+            view.setStatus(drive.name() + " was repaired.");
+            mounted(drive, mounted, open);
+        }, error -> {
+            changingDrives.remove(drive.device());
+            mountFailed(error.getMessage());
+        });
+    }
+    // --8<-- [end:repair]
     // --8<-- [end:mount]
 
     /** Unmount: the drive stays plugged in, but can be pulled out. */

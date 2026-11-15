@@ -105,7 +105,9 @@ The tree view is the default.
 | Key | Action |
 |---|---|
 | Enter, double-click | Open folder, or open file with its default application |
-| Backspace | Parent folder |
+| Backspace, Alt+Up | Parent folder (also the Up button in front of the path bar) |
+| Alt+Left / Alt+Right | Back / forward through the folders shown in the panel (Back and Forward buttons) |
+| Alt+Home | Home folder (Home button) |
 | Ctrl+1 / Ctrl+2 | Tree view / two panels |
 | Tab | Other panel; in the tree view between tree and contents |
 | Insert, Space | Mark line and move down |
@@ -183,6 +185,15 @@ the live system started from are left out.
   **Safely Remove** unmounts every file system on the stick and switches it off, so that it can be
   pulled out; **Eject** opens the tray of a disc drive (`eject`). Panels that show something on the
   drive go to the home folder first. If a program still uses the drive, Files says so.
+- A drive that **disappears while mounted** (pulled out, loose plug, too little power) is noticed by
+  the poll of the tree: panels that showed it go to the home folder ("TOSHIBA EXT was disconnected.").
+  udisks itself cleans up the stale mount. Before mounting, Files looks the drive up again, so one
+  that came back as `/dev/sdc2` instead of `/dev/sdb2` (same label, file system and size) is found.
+- A file system that was cut off while mounted is "dirty", and Linux refuses to mount it; the kernel's
+  `ntfs3` driver reports "wrong fs type, bad option, bad superblock". When mounting fails like this on
+  NTFS, FAT, exFAT or ext2/3/4, Files asks once and then checks and repairs the file system through
+  udisks (`Filesystem.Repair` over D-Bus with `busctl`, so polkit asks for the password if needed;
+  libblockdev runs `ntfsfix -d`, `fsck.vfat`, `fsck.exfat` or `e2fsck`) and mounts it again.
 
 ## Network drives
 

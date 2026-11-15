@@ -1,6 +1,8 @@
 package eu.amadeos.apps.files.ui.panel;
 
 import eu.amadeos.commons.swing.AmadeUI;
+import eu.amadeos.commons.swing.ToolButtons;
+import eu.amadeos.commons.swing.ToolIcon;
 import eu.amadeos.commons.theme.DesktopTheme;
 import eu.amadeos.apps.files.domain.FileEntry;
 import eu.amadeos.apps.files.domain.SortKey;
@@ -22,6 +24,7 @@ import java.awt.event.MouseEvent;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * One file panel: iconic path on top, the file list, and a status line with the selection and the
@@ -48,6 +51,12 @@ public final class FilePanel extends JPanel {
 
         void up();
 
+        void back();
+
+        void forward();
+
+        void home();
+
         void navigate(Path dir);
 
         void sortBy(SortKey key);
@@ -73,6 +82,12 @@ public final class FilePanel extends JPanel {
     private final FileTableModel model = new FileTableModel();
     private final JTable table = new JTable(model);
     private final IconicPathBar pathBar = new IconicPathBar();
+    /** Back, Forward, Up and Home in front of the path bar. */
+    private final JPanel pathRow = new JPanel(new BorderLayout(4, 0));
+    private final JButton backButton = navigationButton(NavigationGlyph.BACK, "Back (Alt+Left)", "back");
+    private final JButton forwardButton = navigationButton(NavigationGlyph.FORWARD, "Forward (Alt+Right)", "forward");
+    private final JButton upButton = navigationButton(NavigationGlyph.UP, "Up (Alt+Up)", "up");
+    private final JButton homeButton = navigationButton(NavigationGlyph.HOME, "Home Folder (Alt+Home)", "home");
     private final JLabel status = new JLabel(" ");
     private final JPanel statusBar = new JPanel(new BorderLayout());
     private final JScrollPane scroll = new JScrollPane(table);
@@ -150,6 +165,24 @@ public final class FilePanel extends JPanel {
             }
         };
         pathBar.addMouseListener(activate);
+        backButton.addActionListener(e -> navigation(Listener::back));
+        forwardButton.addActionListener(e -> navigation(Listener::forward));
+        upButton.addActionListener(e -> navigation(Listener::up));
+        homeButton.addActionListener(e -> navigation(Listener::home));
+        backButton.setEnabled(false);
+        forwardButton.setEnabled(false);
+        JPanel buttons = new JPanel(new GridLayout(1, 0, 2, 0));
+        buttons.setOpaque(false);
+        buttons.add(backButton);
+        buttons.add(forwardButton);
+        buttons.add(upButton);
+        buttons.add(homeButton);
+        JPanel buttonsTop = new JPanel(new BorderLayout());
+        buttonsTop.setOpaque(false);
+        buttonsTop.add(buttons, BorderLayout.NORTH);
+        pathRow.setOpaque(false);
+        pathRow.add(buttonsTop, BorderLayout.WEST);
+        pathRow.add(pathBar, BorderLayout.CENTER);
         status.addMouseListener(activate);
 
         scroll.setBorder(AmadeUI.sunken());
@@ -174,7 +207,7 @@ public final class FilePanel extends JPanel {
                 BorderFactory.createEmptyBorder(1, 6, 1, 6)));
         statusBar.add(status, BorderLayout.CENTER);
 
-        add(pathBar, BorderLayout.NORTH);
+        add(pathRow, BorderLayout.NORTH);
         add(scroll, BorderLayout.CENTER);
         add(statusBar, BorderLayout.SOUTH);
     }
@@ -194,18 +227,46 @@ public final class FilePanel extends JPanel {
     public void setExplorer(boolean value) {
         explorer = value;
         if (value) {
-            remove(pathBar);
+            remove(pathRow);
             remove(statusBar);
         } else {
-            add(pathBar, BorderLayout.NORTH);
+            add(pathRow, BorderLayout.NORTH);
             add(statusBar, BorderLayout.SOUTH);
         }
         revalidate();
         table.repaint();
     }
 
+    /** The path bar with the Back, Forward, Up and Home buttons in front of it. */
     public JComponent pathBar() {
-        return pathBar;
+        return pathRow;
+    }
+
+    /** Which of Back, Forward and Up can be done now. */
+    public void setNavigation(boolean back, boolean forward, boolean up) {
+        backButton.setEnabled(back);
+        forwardButton.setEnabled(forward);
+        upButton.setEnabled(up);
+    }
+
+    /** A button press also makes this the active panel, as a click into it would. */
+    private void navigation(Consumer<Listener> action) {
+        if (listener == null) return;
+        table.requestFocusInWindow();
+        listener.activated();
+        action.accept(listener);
+    }
+
+    private static JButton navigationButton(NavigationGlyph glyph, String tip, String name) {
+        Action action = new AbstractAction(tip) {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+            }
+        };
+        action.putValue(Action.LARGE_ICON_KEY, new ToolIcon(glyph, 18));
+        action.putValue(Action.SHORT_DESCRIPTION, tip);
+        action.putValue(Action.ACTION_COMMAND_KEY, name);
+        return ToolButtons.button(action);
     }
 
     public JComponent statusBar() {

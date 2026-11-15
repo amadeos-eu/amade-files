@@ -179,6 +179,21 @@ public final class MainWindow extends JFrame implements MainView {
             }
 
             @Override
+            public void back() {
+                presenter.back();
+            }
+
+            @Override
+            public void forward() {
+                presenter.forward();
+            }
+
+            @Override
+            public void home() {
+                presenter.goHome();
+            }
+
+            @Override
             public void navigate(Path dir) {
                 presenter.navigate(side, dir);
             }
@@ -383,6 +398,11 @@ public final class MainWindow extends JFrame implements MainView {
     @Override
     public void setPanelStatus(Side side, String text) {
         panels.get(side).setStatus(text);
+    }
+
+    @Override
+    public void setNavigation(Side side, boolean back, boolean forward, boolean up) {
+        panels.get(side).setNavigation(back, forward, up);
     }
 
     @Override
